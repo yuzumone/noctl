@@ -77,3 +77,31 @@ func TextItemsToString(items []notionapi.RichText) string {
 	}
 	return strings.Join(s, "")
 }
+
+func RichTextToMarkdown(items []notionapi.RichText) string {
+	var sb strings.Builder
+	for _, item := range items {
+		text := item.PlainText
+		if item.Annotations != nil {
+			if item.Annotations.Code {
+				text = "`" + text + "`"
+			} else {
+				if item.Annotations.Bold {
+					text = "**" + text + "**"
+				}
+				if item.Annotations.Italic {
+					text = "_" + text + "_"
+				}
+				if item.Annotations.Strikethrough {
+					text = "~~" + text + "~~"
+				}
+			}
+			// Note: Underline and Color are not easily represented in standard Markdown
+		}
+		if item.Href != "" {
+			text = "[" + text + "](" + item.Href + ")"
+		}
+		sb.WriteString(text)
+	}
+	return sb.String()
+}

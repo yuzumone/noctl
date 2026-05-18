@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
+	"github.com/charmbracelet/glamour"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/jomei/notionapi"
@@ -69,11 +71,11 @@ func (m EditorModel) fetchBlocks() tea.Msg {
 	if m.page == nil {
 		return nil
 	}
-	res, err := m.client.ListBlocks(context.Background(), string(m.page.ID), "")
+	blocks, err := m.client.ListBlocksExpanded(context.Background(), string(m.page.ID))
 	if err != nil {
 		return errMsg(fmt.Errorf("failed to fetch page content: %w", err))
 	}
-	return blocksMsg(res.Results)
+	return blocksMsg(blocks)
 }
 
 func (m *EditorModel) SetCreateMode(dbID string) tea.Cmd {
@@ -289,7 +291,7 @@ func (m *EditorModel) updateContent() {
 		return
 	}
 
-	var content string
+	var content strings.Builder
 
 	// Page Title
 	titleKey := ""
@@ -300,39 +302,56 @@ func (m *EditorModel) updateContent() {
 		}
 	}
 
-	content += TitleStyle.Render("Page: "+notion.PropertyToString(m.page.Properties[titleKey])) + "\n\n"
-	content += lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("ID: "+string(m.page.ID)) + "\n\n"
+	content.WriteString(TitleStyle.Render("Page: "+notion.PropertyToString(m.page.Properties[titleKey])) + "\n\n")
+	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("ID: "+string(m.page.ID)) + "\n\n")
 
 	// Properties
-	content += lipgloss.NewStyle().Bold(true).Underline(true).Render("Properties:") + "\n"
+	content.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("Properties:") + "\n")
 
-	for name, prop := range m.page.Properties {
-		if name == titleKey {
-			continue
+	var propNames []string
+	for name := range m.page.Properties {
+		if name != titleKey {
+			propNames = append(propNames, name)
 		}
+	}
+	sort.Strings(propNames)
+
+	for _, name := range propNames {
+		prop := m.page.Properties[name]
 		label := lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Bold(true).Render(name + ": ")
 		value := notion.PropertyToString(prop)
 		if value == "" {
 			value = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(empty)")
 		}
-		content += fmt.Sprintf("%s %s\n", label, value)
+		content.WriteString(fmt.Sprintf("%s %s\n", label, value))
 	}
 
 	// Content Blocks
 	if len(m.blocks) > 0 {
-		content += "\n" + lipgloss.NewStyle().Bold(true).Underline(true).Render("Content:") + "\n"
-		for _, block := range m.blocks {
-			content += notion.BlockToString(block)
+		md := notion.BlocksToMarkdown(m.blocks)
+		renderer, err := glamour.NewTermRenderer(
+			glamour.WithAutoStyle(),
+			glamour.WithWordWrap(m.width-4),
+		)
+		if err == nil {
+			rendered, err := renderer.Render(md)
+			if err == nil {
+				content.WriteString("\n" + rendered)
+			} else {
+				content.WriteString("\n" + md)
+			}
+		} else {
+			content.WriteString("\n" + md)
 		}
 	} else if m.mode == modeView {
 		if m.blocksLoaded {
-			content += "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(empty content)") + "\n"
+			content.WriteString("\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(empty content)") + "\n")
 		} else {
-			content += "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Loading content...") + "\n"
+			content.WriteString("\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Loading content...") + "\n")
 		}
 	}
 
-	m.viewport.SetContent(content)
+	m.viewport.SetContent(content.String())
 }
 
 func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {

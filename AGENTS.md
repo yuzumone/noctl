@@ -26,7 +26,7 @@
 | **Database Listing** | ✅ Done | Fetches and lists all accessible databases. |
 | **Record Browsing** | ✅ Done | Table view of database records with dynamic column widths. |
 | **Local Filtering** | ✅ Done | Press `/` in record list to filter results instantly. |
-| **Page Detail View** | ✅ Done | Full property list and body content (blocks) rendering. |
+| **Page Detail View** | ✅ Done | Full property list and body content (blocks) rendering with Markdown syntax highlighting via Glamour. |
 | **Record Creation** | ✅ Done | Press `n` to create new records based on DB schema. |
 | **Record Editing** | ✅ Done | Press `e` to edit existing record properties. |
 | **Browser Integration**| ✅ Done | Press `o` to open databases or pages in default browser. |

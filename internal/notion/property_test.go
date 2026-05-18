@@ -98,3 +98,58 @@ func TestPropertyToString(t *testing.T) {
 		})
 	}
 }
+
+func TestRichTextToMarkdown(t *testing.T) {
+	tests := []struct {
+		name     string
+		items    []notionapi.RichText
+		expected string
+	}{
+		{
+			name: "Plain text",
+			items: []notionapi.RichText{
+				{PlainText: "Hello"},
+			},
+			expected: "Hello",
+		},
+		{
+			name: "Bold and Italic",
+			items: []notionapi.RichText{
+				{PlainText: "Bold", Annotations: &notionapi.Annotations{Bold: true}},
+				{PlainText: " "},
+				{PlainText: "Italic", Annotations: &notionapi.Annotations{Italic: true}},
+			},
+			expected: "**Bold** _Italic_",
+		},
+		{
+			name: "Code",
+			items: []notionapi.RichText{
+				{PlainText: "fmt.Println", Annotations: &notionapi.Annotations{Code: true}},
+			},
+			expected: "`fmt.Println`",
+		},
+		{
+			name: "Link",
+			items: []notionapi.RichText{
+				{PlainText: "Google", Href: "https://google.com"},
+			},
+			expected: "[Google](https://google.com)",
+		},
+		{
+			name: "Strikethrough",
+			items: []notionapi.RichText{
+				{PlainText: "old", Annotations: &notionapi.Annotations{Strikethrough: true}},
+			},
+			expected: "~~old~~",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := RichTextToMarkdown(tt.items)
+			if got != tt.expected {
+				t.Errorf("RichTextToMarkdown() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
