@@ -69,9 +69,65 @@ func TestBlockToString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := BlockToString(tt.block)
+			got := BlockToString(tt.block, false)
 			if got != tt.expected {
 				t.Errorf("BlockToString() = %q, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestParseContentToBlocks(t *testing.T) {
+	c := &Client{}
+	tests := []struct {
+		name     string
+		content  string
+		expected []notionapi.BlockType
+	}{
+		{
+			name:    "Heading and Paragraph",
+			content: "# Heading\nParagraph",
+			expected: []notionapi.BlockType{
+				notionapi.BlockTypeHeading1,
+				notionapi.BlockTypeParagraph,
+			},
+		},
+		{
+			name:    "List Items",
+			content: "- Item 1\n- Item 2",
+			expected: []notionapi.BlockType{
+				notionapi.BlockTypeBulletedListItem,
+				notionapi.BlockTypeBulletedListItem,
+			},
+		},
+		{
+			name:    "Quote and Code",
+			content: "> Quote\n```go\ncode\n```",
+			expected: []notionapi.BlockType{
+				notionapi.BlockTypeQuote,
+				notionapi.BlockTypeCode,
+			},
+		},
+		{
+			name:    "ToDo and Divider",
+			content: "- [ ] Task\n---",
+			expected: []notionapi.BlockType{
+				notionapi.BlockTypeToDo,
+				notionapi.BlockTypeDivider,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			blocks := c.ParseContentToBlocks(tt.content)
+			if len(blocks) != len(tt.expected) {
+				t.Fatalf("got %d blocks, want %d", len(blocks), len(tt.expected))
+			}
+			for i, b := range blocks {
+				if b.GetType() != tt.expected[i] {
+					t.Errorf("block %d: got type %s, want %s", i, b.GetType(), tt.expected[i])
+				}
 			}
 		})
 	}

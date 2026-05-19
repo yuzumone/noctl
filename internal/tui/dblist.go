@@ -41,6 +41,7 @@ type SelectDBMsg struct {
 func NewDBListModel(client *notion.Client) DBListModel {
 	l := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
 	l.Title = "Select a Database"
+	l.Styles.Title = TitleStyle
 	l.SetShowHelp(false)
 	
 	return DBListModel{
@@ -74,7 +75,7 @@ func (m DBListModel) Update(msg tea.Msg) (DBListModel, tea.Cmd) {
 			if i, ok := m.list.SelectedItem().(dbItem); ok {
 				_ = openBrowser(i.url)
 			}
-		case "enter":
+		case "enter", "l":
 			if i, ok := m.list.SelectedItem().(dbItem); ok {
 				return m, func() tea.Msg {
 					return SelectDBMsg{ID: i.id, Title: i.title}
@@ -86,6 +87,7 @@ func (m DBListModel) Update(msg tea.Msg) (DBListModel, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.list.SetSize(msg.Width, msg.Height-1)
+		m.list.Styles.Title = TitleStyle.Width(msg.Width).Padding(0, 1)
 
 	case databasesMsg:
 		m.loading = false

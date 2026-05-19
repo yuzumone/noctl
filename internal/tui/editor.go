@@ -3,6 +3,8 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"sort"
 	"strconv"
 	"strings"
@@ -37,6 +39,7 @@ type EditorModel struct {
 	blocks       []notionapi.Block
 	blocksLoaded bool
 	focusedIdx   int
+	tempFile     string
 	err          error
 	ready       bool
 	loading     bool
@@ -57,6 +60,7 @@ func (m EditorModel) Init() tea.Cmd {
 type PageCreatedMsg *notionapi.Page
 type PageUpdatedMsg *notionapi.Page
 type blocksMsg []notionapi.Block
+type editorFinishedMsg struct{ err error }
 
 func (m *EditorModel) SetPage(page *notionapi.Page) tea.Cmd {
 	m.mode = modeView
@@ -302,7 +306,7 @@ func (m *EditorModel) updateContent() {
 		}
 	}
 
-	content.WriteString(TitleStyle.Render("Page: "+notion.PropertyToString(m.page.Properties[titleKey])) + "\n\n")
+	content.WriteString(TitleStyle.Width(m.width).Padding(0, 1).Render("Page: "+notion.PropertyToString(m.page.Properties[titleKey])) + "\n\n")
 	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("ID: "+string(m.page.ID)) + "\n\n")
 
 	// Properties
@@ -352,6 +356,71 @@ func (m *EditorModel) updateContent() {
 	}
 
 	m.viewport.SetContent(content.String())
+}
+
+func (m *EditorModel) openInEditor() tea.Cmd {
+	if m.page == nil {
+		return nil
+	}
+
+	md := notion.BlocksToMarkdownExtended(m.blocks, true)
+	
+	// Create temporary file
+	tmpFile, err := os.CreateTemp("", "noctl-*.md")
+	if err != nil {
+		return func() tea.Msg { return errMsg(fmt.Errorf("failed to create temp file: %w", err)) }
+	}
+	m.tempFile = tmpFile.Name()
+
+	if _, err := tmpFile.WriteString(md); err != nil {
+		tmpFile.Close()
+		os.Remove(m.tempFile)
+		return func() tea.Msg { return errMsg(fmt.Errorf("failed to write to temp file: %w", err)) }
+	}
+	tmpFile.Close()
+
+	// Open editor
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vim" // Default to vim
+	}
+
+	cmd := exec.Command(editor, m.tempFile)
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		return editorFinishedMsg{err: err}
+	})
+}
+
+func (m *EditorModel) handleEditorFinished(msg editorFinishedMsg) tea.Cmd {
+	defer os.Remove(m.tempFile)
+
+	if msg.err != nil {
+		return func() tea.Msg { return errMsg(fmt.Errorf("editor failed: %w", msg.err)) }
+	}
+
+	// Read back content
+	newMdBytes, err := os.ReadFile(m.tempFile)
+	if err != nil {
+		return func() tea.Msg { return errMsg(fmt.Errorf("failed to read temp file: %w", err)) }
+	}
+	newMd := string(newMdBytes)
+
+	oldMd := notion.BlocksToMarkdown(m.blocks)
+	if newMd == oldMd {
+		return nil // No changes
+	}
+
+	m.loading = true
+	m.updateContent()
+
+	return func() tea.Msg {
+		err := m.client.UpdatePageContent(context.Background(), string(m.page.ID), newMd)
+		if err != nil {
+			return errMsg(fmt.Errorf("failed to update page content: %w", err))
+		}
+		// Refresh blocks
+		return m.fetchBlocks()
+	}
 }
 
 func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
@@ -418,6 +487,9 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 	}
 
 	switch msg := msg.(type) {
+	case editorFinishedMsg:
+		return m, m.handleEditorFinished(msg)
+
 	case errMsg:
 		m.err = msg
 		m.loading = false
@@ -426,6 +498,7 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 	case blocksMsg:
 		m.blocks = msg
 		m.blocksLoaded = true
+		m.loading = false
 		m.updateContent()
 		return m, nil
 
@@ -437,6 +510,8 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 			}
 		case "e":
 			return m, m.SetEditMode(m.page)
+		case "O":
+			return m, m.openInEditor()
 		}
 
 	case tea.WindowSizeMsg:
@@ -473,7 +548,7 @@ func (m EditorModel) View() string {
 		if m.mode == modeEdit {
 			title = "Edit Record"
 		}
-		s.WriteString(TitleStyle.Render(title) + "\n\n")
+		s.WriteString(TitleStyle.Width(m.width).Padding(0, 1).Render(title) + "\n\n")
 		for i := range m.inputs {
 			s.WriteString(m.inputs[i].View() + "\n")
 		}
@@ -496,7 +571,8 @@ func (m EditorModel) View() string {
 
 	footer := renderFooter(m.width, []keyHelp{
 		{"o", "Open"},
-		{"e", "Edit"},
+		{"e", "Edit Prop"},
+		{"O", "Edit Content"},
 		{"Esc", "Back"},
 		{"q", "Quit"},
 	})

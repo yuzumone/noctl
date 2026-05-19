@@ -230,7 +230,7 @@ func (m RecordsModel) Update(msg tea.Msg) (RecordsModel, tea.Cmd) {
 			if idx >= 0 && idx < len(m.pages) {
 				_ = openBrowser(m.pages[idx].URL)
 			}
-		case "n":
+		case "a":
 			return m, func() tea.Msg {
 				return CreateRecordMsg{DatabaseID: m.dbID}
 			}
@@ -246,7 +246,7 @@ func (m RecordsModel) Update(msg tea.Msg) (RecordsModel, tea.Cmd) {
 			m.filtering = true
 			m.filterInput.Focus()
 			return m, nil
-		case "enter":
+		case "enter", "l":
 			idx := m.table.Cursor()
 			if idx >= 0 && idx < len(m.pages) {
 				page := m.pages[idx]
@@ -288,7 +288,7 @@ func (m RecordsModel) View() string {
 	if m.filtering {
 		header = m.filterInput.View() + "\n\n"
 	} else {
-		header = TitleStyle.Render("Database: "+m.dbName) + "\n\n"
+		header = TitleStyle.Width(m.width).Padding(0, 1).Render("Database: "+m.dbName) + "\n\n"
 		if m.loading {
 			header += "Loading records...\n"
 		}
@@ -296,7 +296,7 @@ func (m RecordsModel) View() string {
 
 	footer := renderFooter(m.width, []keyHelp{
 		{"o", "Open"},
-		{"n", "New"},
+		{"a", "New"},
 		{"/", "Filter"},
 		{"Enter", "Detail"},
 		{"e", "Edit"},
