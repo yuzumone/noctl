@@ -22,8 +22,14 @@ default_database_id: test_db_id
 
 	// Mock home directory for viper
 	origHome := os.Getenv("HOME")
-	os.Setenv("HOME", tempHome)
-	defer os.Setenv("HOME", origHome)
+	if err := os.Setenv("HOME", tempHome); err != nil {
+		t.Fatalf("failed to set HOME: %v", err)
+	}
+	defer func() {
+		if err := os.Setenv("HOME", origHome); err != nil {
+			t.Errorf("failed to restore HOME: %v", err)
+		}
+	}()
 
 	// Reset viper for testing
 	viper.Reset()
@@ -43,8 +49,14 @@ default_database_id: test_db_id
 
 func TestConfigLoadEnv(t *testing.T) {
 	viper.Reset()
-	os.Setenv("NOCTL_NOTION_TOKEN", "env_token")
-	defer os.Unsetenv("NOCTL_NOTION_TOKEN")
+	if err := os.Setenv("NOCTL_NOTION_TOKEN", "env_token"); err != nil {
+		t.Fatalf("failed to set env var: %v", err)
+	}
+	defer func() {
+		if err := os.Unsetenv("NOCTL_NOTION_TOKEN"); err != nil {
+			t.Errorf("failed to unset env var: %v", err)
+		}
+	}()
 
 	cfg, err := Load()
 	if err != nil {

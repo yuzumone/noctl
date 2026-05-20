@@ -70,6 +70,48 @@ func PropertyToString(prop notionapi.Property) string {
 	return ""
 }
 
+// PropertyToIcon returns a Nerd Font icon for a given Notion property.
+func PropertyToIcon(prop notionapi.Property) string {
+	switch prop.(type) {
+	case *notionapi.TitleProperty:
+		return "󰗚"
+	case *notionapi.RichTextProperty:
+		return "󰦨"
+	case *notionapi.SelectProperty:
+		return "󰦪"
+	case *notionapi.MultiSelectProperty:
+		return "󰦫"
+	case *notionapi.NumberProperty:
+		return "󰎠"
+	case *notionapi.CheckboxProperty:
+		return "󰄬"
+	case *notionapi.DateProperty:
+		return "󰃭"
+	case *notionapi.URLProperty:
+		return "󰖟"
+	case *notionapi.EmailProperty:
+		return "󰇮"
+	case *notionapi.PhoneNumberProperty:
+		return "󰏲"
+	case *notionapi.StatusProperty:
+		return "󰗡"
+	case *notionapi.FilesProperty:
+		return "󰈔"
+	case *notionapi.FormulaProperty:
+		return "󰘚"
+	case *notionapi.CreatedTimeProperty, *notionapi.LastEditedTimeProperty:
+		return "󰃰"
+	case *notionapi.CreatedByProperty, *notionapi.LastEditedByProperty, *notionapi.PeopleProperty:
+		return "󰇔"
+	case *notionapi.RelationProperty:
+		return "󰌷"
+	case *notionapi.RollupProperty:
+		return "󰪚"
+	}
+	return "󰇗" // Default icon
+}
+
+// TextItemsToString converts a slice of Notion RichText items into a single plain text string.
 func TextItemsToString(items []notionapi.RichText) string {
 	var s []string
 	for _, item := range items {
@@ -78,6 +120,7 @@ func TextItemsToString(items []notionapi.RichText) string {
 	return strings.Join(s, "")
 }
 
+// RichTextToMarkdown converts a slice of Notion RichText items into a markdown string, preserving basic formatting.
 func RichTextToMarkdown(items []notionapi.RichText) string {
 	var sb strings.Builder
 	for _, item := range items {

@@ -61,8 +61,8 @@ func TestBlockToString(t *testing.T) {
 			expected: "```go\nfmt.Println(\"hi\")\n```\n\n",
 		},
 		{
-			name: "Divider Block",
-			block: &notionapi.DividerBlock{},
+			name:     "Divider Block",
+			block:    &notionapi.DividerBlock{},
 			expected: "---\n\n",
 		},
 	}

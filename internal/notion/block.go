@@ -1,3 +1,4 @@
+// Package notion handles Notion block conversions and API interactions.
 package notion
 
 import (
@@ -57,7 +58,7 @@ func RenderTable(tableBlock notionapi.Block, rows []notionapi.Block, includeID b
 
 	var sb strings.Builder
 	if includeID && tableBlock != nil {
-		sb.WriteString(fmt.Sprintf("<!-- id: %s -->\n", tableBlock.GetID()))
+		fmt.Fprintf(&sb, "<!-- id: %s -->\n", tableBlock.GetID())
 	}
 
 	hasHeader := false
@@ -124,6 +125,7 @@ func BlocksToMarkdown(blocks []notionapi.Block) string {
 	return BlocksToMarkdownExtended(blocks, false)
 }
 
+// BlocksToMarkdownExtended converts a slice of Notion blocks to a single markdown string, optionally including block IDs.
 func BlocksToMarkdownExtended(blocks []notionapi.Block, includeIDs bool) string {
 	var sb strings.Builder
 	var tableRows []notionapi.Block
@@ -216,7 +218,7 @@ func (c *Client) ListBlocksExpanded(ctx context.Context, id string) ([]notionapi
 func (c *Client) ParseContentToBlocks(content string) []notionapi.Block {
 	var blocks []notionapi.Block
 	lines := strings.Split(content, "\n")
-	
+
 	var currentLines []string
 	var currentType string // "p", "h1", "h2", "h3", "li", "todo", "quote", "code", "div"
 
@@ -245,7 +247,7 @@ func (c *Client) ParseContentToBlocks(content string) []notionapi.Block {
 			}
 		case "li":
 			b = &notionapi.BulletedListItemBlock{
-				BasicBlock: notionapi.BasicBlock{Object: notionapi.ObjectTypeBlock, Type: notionapi.BlockTypeBulletedListItem},
+				BasicBlock:       notionapi.BasicBlock{Object: notionapi.ObjectTypeBlock, Type: notionapi.BlockTypeBulletedListItem},
 				BulletedListItem: notionapi.ListItem{RichText: []notionapi.RichText{{Text: &notionapi.Text{Content: text}}}},
 			}
 		case "todo":
@@ -367,7 +369,7 @@ func (c *Client) ParseContentToBlocks(content string) []notionapi.Block {
 				finishBlock()
 				currentType = "p"
 			}
-			
+
 			if currentType == "" {
 				currentType = "p"
 			}
@@ -399,7 +401,7 @@ func (c *Client) UpdatePageContent(ctx context.Context, pageID string, markdown 
 	}
 	var chunks []chunk
 	idRegex := regexp.MustCompile(`<!-- id: ([a-f0-9-]+) -->`)
-	
+
 	lines := strings.Split(markdown, "\n")
 	var currentID string
 	var currentContent strings.Builder
@@ -428,13 +430,13 @@ func (c *Client) UpdatePageContent(ctx context.Context, pageID string, markdown 
 
 	for _, ch := range chunks {
 		parsedBlocks := c.ParseContentToBlocks(ch.content)
-		
+
 		if ch.id != "" {
 			seenIDs[ch.id] = true
 			lastID = ch.id
 			orig, ok := blockMap[ch.id]
 			if !ok {
-				continue 
+				continue
 			}
 
 			if len(parsedBlocks) > 0 {
@@ -450,7 +452,7 @@ func (c *Client) UpdatePageContent(ctx context.Context, pageID string, markdown 
 						}
 					}
 				}
-				
+
 				// Handle extra blocks in this chunk
 				for i := 1; i < len(parsedBlocks); i++ {
 					req := &notionapi.AppendBlockChildrenRequest{
@@ -492,10 +494,10 @@ func (c *Client) UpdatePageContent(ctx context.Context, pageID string, markdown 
 	return nil
 }
 
-func blockToUpdateStage(new notionapi.Block, orig notionapi.Block) *notionapi.BlockUpdateRequest {
+func blockToUpdateStage(newBlock notionapi.Block, orig notionapi.Block) *notionapi.BlockUpdateRequest {
 	req := &notionapi.BlockUpdateRequest{}
-	
-	switch b := new.(type) {
+
+	switch b := newBlock.(type) {
 	case *notionapi.ParagraphBlock:
 		req.Paragraph = &b.Paragraph
 	case *notionapi.Heading1Block:
@@ -522,4 +524,3 @@ func blockToUpdateStage(new notionapi.Block, orig notionapi.Block) *notionapi.Bl
 	}
 	return req
 }
-

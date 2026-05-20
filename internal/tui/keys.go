@@ -14,7 +14,7 @@ func renderFooter(width int, helps []keyHelp) string {
 	for _, h := range helps {
 		parts = append(parts, KeyStyle.Render(h.key)+KeyDescStyle.Render(h.desc))
 	}
-	
+
 	footerContent := strings.Join(parts, " ")
 	return FooterStyle.Width(width).Render(footerContent)
 }

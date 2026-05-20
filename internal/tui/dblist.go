@@ -1,3 +1,4 @@
+// Package tui provides terminal user interface components.
 package tui
 
 import (
@@ -23,12 +24,12 @@ func (i dbItem) Description() string { return i.id }
 func (i dbItem) FilterValue() string { return i.title }
 
 type DBListModel struct {
-	list     list.Model
-	client   *notion.Client
-	loading  bool
-	err      error
-	width    int
-	height   int
+	list    list.Model
+	client  *notion.Client
+	loading bool
+	err     error
+	width   int
+	height  int
 }
 
 type databasesMsg []notionapi.Database
@@ -43,7 +44,7 @@ func NewDBListModel(client *notion.Client) DBListModel {
 	l.Title = "Select a Database"
 	l.Styles.Title = TitleStyle
 	l.SetShowHelp(false)
-	
+
 	return DBListModel{
 		list:   l,
 		client: client,
@@ -71,7 +72,7 @@ func (m DBListModel) Update(msg tea.Msg) (DBListModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "o":
+		case "b":
 			if i, ok := m.list.SelectedItem().(dbItem); ok {
 				_ = openBrowser(i.url)
 			}
@@ -99,7 +100,7 @@ func (m DBListModel) Update(msg tea.Msg) (DBListModel, tea.Cmd) {
 			}
 			items[i] = dbItem{id: string(db.ID), title: title, url: db.URL}
 		}
-		cmd = m.list.SetItems(items)
+		return m, m.list.SetItems(items)
 
 	case errMsg:
 		m.err = msg
@@ -117,7 +118,8 @@ func (m DBListModel) View() string {
 
 	footer := renderFooter(m.width, []keyHelp{
 		{"Enter", "Select"},
-		{"o", "Open"},
+		{"o", "Omnisearch"},
+		{"b", "Open"},
 		{"/", "Filter"},
 		{"q", "Quit"},
 	})

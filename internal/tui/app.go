@@ -1,3 +1,4 @@
+// Package tui provides terminal user interface components.
 package tui
 
 import (
@@ -7,6 +8,8 @@ import (
 	"noctl/internal/notion"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/jomei/notionapi"
 )
 
 type sessionState uint
@@ -15,47 +18,69 @@ const (
 	viewDBList sessionState = iota
 	viewRecords
 	viewEditor
+	viewOmnisearch
 )
 
 // AppModel is the root model for the application.
 type AppModel struct {
-	state  sessionState
-	config *config.Config
-	client *notion.Client
-	
-	dbList  DBListModel
-	records RecordsModel
-	editor  EditorModel
-	
+	state   sessionState
+	history []sessionState
+	config  *config.Config
+	client  *notion.Client
+
+	dbList     DBListModel
+	records    RecordsModel
+	editor     EditorModel
+	omnisearch OmnisearchModel
+
 	width  int
 	height int
 	err    error
 }
 
 // NewAppModel creates a new AppModel.
-func NewAppModel(cfg *config.Config) AppModel {
+func NewAppModel(cfg *config.Config) *AppModel {
 	var client *notion.Client
 	if cfg.NotionToken != "" {
 		client = notion.NewClient(cfg.NotionToken)
 	}
 
-	return AppModel{
-		state:   viewDBList,
-		config:  cfg,
-		client:  client,
-		dbList:  NewDBListModel(client),
-		records: NewRecordsModel(client),
-		editor:  NewEditorModel(client),
+	return &AppModel{
+		state:      viewDBList,
+		history:    []sessionState{},
+		config:     cfg,
+		client:     client,
+		dbList:     NewDBListModel(client),
+		records:    NewRecordsModel(client),
+		editor:     NewEditorModel(client),
+		omnisearch: NewOmnisearchModel(client),
 	}
 }
 
+func (m *AppModel) pushState(s sessionState) {
+	if m.state == s {
+		return
+	}
+	m.history = append(m.history, m.state)
+	m.state = s
+}
+
+func (m *AppModel) popState() {
+	if len(m.history) == 0 {
+		return
+	}
+	last := len(m.history) - 1
+	m.state = m.history[last]
+	m.history = m.history[:last]
+}
+
 // Init initializes the application.
-func (m AppModel) Init() tea.Cmd {
+func (m *AppModel) Init() tea.Cmd {
 	return m.dbList.Init()
 }
 
-// Update handles messages.
-func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+// Update handles messages and updates the AppModel.
+func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
@@ -64,13 +89,31 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "o":
+			if m.state != viewOmnisearch {
+				m.pushState(viewOmnisearch)
+				m.omnisearch.input.SetValue("")
+				m.omnisearch.list.SetItems(nil)
+				m.omnisearch.input.Focus()
+				return m, nil
+			}
 		case "esc", "h":
-			if m.state == viewRecords {
-				m.state = viewDBList
-				return m, nil
-			} else if m.state == viewEditor {
-				m.state = viewRecords
-				return m, nil
+			// Don't trigger back on 'h' if we are in an input mode
+			if msg.String() == "h" {
+				if m.state == viewOmnisearch {
+					break // Let it fall through to delegation
+				}
+				if m.state == viewEditor && (m.editor.mode == modeCreate || m.editor.mode == modeEdit) {
+					break // Let it fall through to delegation
+				}
+			}
+
+			// Handle 'back' action
+			if msg.String() == "esc" || msg.String() == "h" {
+				if len(m.history) > 0 {
+					m.popState()
+					return m, nil
+				}
 			}
 		}
 
@@ -80,26 +123,52 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.dbList, _ = m.dbList.Update(msg)
 		m.records, _ = m.records.Update(msg)
 		m.editor, _ = m.editor.Update(msg)
+		m.omnisearch, _ = m.omnisearch.Update(msg)
 
 	case SelectDBMsg:
-		m.state = viewRecords
+		m.pushState(viewRecords)
 		return m, m.records.SetDatabase(msg.ID, msg.Title)
 
 	case SelectPageMsg:
-		m.state = viewEditor
+		m.pushState(viewEditor)
 		return m, m.editor.SetPage(msg.Page)
 
 	case CreateRecordMsg:
-		m.state = viewEditor
+		m.pushState(viewEditor)
 		return m, m.editor.SetCreateMode(msg.DatabaseID)
 
 	case EditRecordMsg:
-		m.state = viewEditor
+		m.pushState(viewEditor)
 		return m, m.editor.SetEditMode(msg.Page)
 
 	case PageCreatedMsg, PageUpdatedMsg:
 		m.state = viewRecords
-		return m, m.records.SetDatabase(m.records.dbID, m.records.dbName)
+		var page *notionapi.Page
+		if p, ok := msg.(PageCreatedMsg); ok {
+			page = (*notionapi.Page)(p)
+		} else if p, ok := msg.(PageUpdatedMsg); ok {
+			page = (*notionapi.Page)(p)
+		}
+
+		dbID := m.records.dbID
+		dbName := m.records.dbName
+		if dbID == "" && page != nil {
+			dbID = string(page.Parent.DatabaseID)
+		}
+		return m, m.records.SetDatabase(dbID, dbName)
+
+	case CancelEditMsg:
+		if m.editor.page == nil {
+			m.popState()
+		} else {
+			m.editor.mode = modeView
+			m.editor.updateContent()
+		}
+		return m, nil
+
+	case CancelOmnisearchMsg:
+		m.popState()
+		return m, nil
 	}
 
 	// Delegate to sub-models
@@ -113,13 +182,16 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case viewEditor:
 		m.editor, cmd = m.editor.Update(msg)
 		cmds = append(cmds, cmd)
+	case viewOmnisearch:
+		m.omnisearch, cmd = m.omnisearch.Update(msg)
+		cmds = append(cmds, cmd)
 	}
 
 	return m, tea.Batch(cmds...)
 }
 
 // View renders the application.
-func (m AppModel) View() string {
+func (m *AppModel) View() string {
 	if m.err != nil {
 		return ErrorStyle.Render(fmt.Sprintf("Fatal Error: %v\n\nPress 'q' to quit.", m.err))
 	}
@@ -128,14 +200,39 @@ func (m AppModel) View() string {
 		return TitleStyle.Render("noctl") + "\n\n" + ErrorStyle.Render("Error: NOTION_TOKEN is not set. Please set it in your environment or config file (~/.config/noctl/config.yaml).")
 	}
 
+	var baseView string
 	switch m.state {
 	case viewDBList:
-		return m.dbList.View()
+		baseView = m.dbList.View()
 	case viewRecords:
-		return m.records.View()
+		baseView = m.records.View()
 	case viewEditor:
-		return m.editor.View()
+		baseView = m.editor.View()
+	case viewOmnisearch:
+		// If search is active, show the previous state in the background if available
+		if len(m.history) > 0 {
+			switch m.history[len(m.history)-1] {
+			case viewDBList:
+				baseView = m.dbList.View()
+			case viewRecords:
+				baseView = m.records.View()
+			case viewEditor:
+				baseView = m.editor.View()
+			default:
+				baseView = m.dbList.View()
+			}
+		} else {
+			baseView = m.dbList.View()
+		}
 	default:
 		return "Unknown state"
 	}
+
+	if m.state == viewOmnisearch {
+		popup := m.omnisearch.View()
+		// Overlay the popup in the center
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, popup)
+	}
+
+	return baseView
 }

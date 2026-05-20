@@ -1,3 +1,4 @@
+// Package config provides functionality for loading and managing application configuration.
 package config
 
 import (
@@ -17,13 +18,17 @@ type Config struct {
 // Load loads the configuration from environment variables and the config file.
 func Load() (*Config, error) {
 	viper.SetEnvPrefix("NOCTL")
-	viper.BindEnv("notion_token")
-	viper.BindEnv("default_database_id")
+	if err := viper.BindEnv("notion_token"); err != nil {
+		return nil, fmt.Errorf("failed to bind env var notion_token: %w", err)
+	}
+	if err := viper.BindEnv("default_database_id"); err != nil {
+		return nil, fmt.Errorf("failed to bind env var default_database_id: %w", err)
+	}
 
 	// Search locations
 	home, err := os.UserHomeDir()
 	if err == nil {
-		viper.AddConfigPath(home)                             // ~/.noctl.yaml
+		viper.AddConfigPath(home)                                    // ~/.noctl.yaml
 		viper.AddConfigPath(filepath.Join(home, ".config", "noctl")) // ~/.config/noctl/config.yaml
 	}
 	viper.SetConfigName(".noctl")

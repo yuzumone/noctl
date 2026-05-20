@@ -13,8 +13,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
-	"github.com/charmbracelet/glamour"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/jomei/notionapi"
 )
@@ -27,38 +27,48 @@ const (
 	modeEdit
 )
 
+// EditorModel is a Bubble Tea model for viewing and editing Notion pages.
 type EditorModel struct {
-	viewport    viewport.Model
-	inputs      []textinput.Model
-	propKeys    []string
-	propConfigs map[string]notionapi.PropertyConfig
-	mode        editorMode
-	client      *notion.Client
-	dbID        string
+	viewport     viewport.Model
+	inputs       []textinput.Model
+	propKeys     []string
+	propConfigs  map[string]notionapi.PropertyConfig
+	mode         editorMode
+	client       *notion.Client
+	dbID         string
 	page         *notionapi.Page
 	blocks       []notionapi.Block
 	blocksLoaded bool
 	focusedIdx   int
 	tempFile     string
 	err          error
-	ready       bool
-	loading     bool
-	width       int
-	height      int
+	ready        bool
+	loading      bool
+	width        int
+	height       int
 }
 
+// NewEditorModel creates a new EditorModel.
 func NewEditorModel(client *notion.Client) EditorModel {
 	return EditorModel{
 		client: client,
 	}
 }
 
+// Init initializes the EditorModel.
 func (m EditorModel) Init() tea.Cmd {
 	return nil
 }
 
+// PageCreatedMsg is a message sent when a page is created.
 type PageCreatedMsg *notionapi.Page
+
+// PageUpdatedMsg is a message sent when a page is updated.
 type PageUpdatedMsg *notionapi.Page
+
+// CancelEditMsg is a message sent when the user cancels an edit or create operation.
+type CancelEditMsg struct{}
+
 type blocksMsg []notionapi.Block
 type editorFinishedMsg struct{ err error }
 
@@ -306,7 +316,8 @@ func (m *EditorModel) updateContent() {
 		}
 	}
 
-	content.WriteString(TitleStyle.Width(m.width).Padding(0, 1).Render("Page: "+notion.PropertyToString(m.page.Properties[titleKey])) + "\n\n")
+	titleIcon := notion.PropertyToIcon(m.page.Properties[titleKey])
+	content.WriteString(TitleStyle.Width(m.width).Padding(0, 1).Render(titleIcon+" "+notion.PropertyToString(m.page.Properties[titleKey])) + "\n\n")
 	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("ID: "+string(m.page.ID)) + "\n\n")
 
 	// Properties
@@ -322,12 +333,13 @@ func (m *EditorModel) updateContent() {
 
 	for _, name := range propNames {
 		prop := m.page.Properties[name]
-		label := lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Bold(true).Render(name + ": ")
+		icon := notion.PropertyToIcon(prop)
+		label := lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Bold(true).Render(icon + " " + name + ": ")
 		value := notion.PropertyToString(prop)
 		if value == "" {
 			value = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(empty)")
 		}
-		content.WriteString(fmt.Sprintf("%s %s\n", label, value))
+		fmt.Fprintf(&content, "%s %s\n", label, value)
 	}
 
 	// Content Blocks
@@ -364,7 +376,7 @@ func (m *EditorModel) openInEditor() tea.Cmd {
 	}
 
 	md := notion.BlocksToMarkdownExtended(m.blocks, true)
-	
+
 	// Create temporary file
 	tmpFile, err := os.CreateTemp("", "noctl-*.md")
 	if err != nil {
@@ -373,11 +385,11 @@ func (m *EditorModel) openInEditor() tea.Cmd {
 	m.tempFile = tmpFile.Name()
 
 	if _, err := tmpFile.WriteString(md); err != nil {
-		tmpFile.Close()
-		os.Remove(m.tempFile)
+		_ = tmpFile.Close()
+		_ = os.Remove(m.tempFile)
 		return func() tea.Msg { return errMsg(fmt.Errorf("failed to write to temp file: %w", err)) }
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 
 	// Open editor
 	editor := os.Getenv("EDITOR")
@@ -392,7 +404,7 @@ func (m *EditorModel) openInEditor() tea.Cmd {
 }
 
 func (m *EditorModel) handleEditorFinished(msg editorFinishedMsg) tea.Cmd {
-	defer os.Remove(m.tempFile)
+	defer func() { _ = os.Remove(m.tempFile) }()
 
 	if msg.err != nil {
 		return func() tea.Msg { return errMsg(fmt.Errorf("editor failed: %w", msg.err)) }
@@ -418,8 +430,9 @@ func (m *EditorModel) handleEditorFinished(msg editorFinishedMsg) tea.Cmd {
 		if err != nil {
 			return errMsg(fmt.Errorf("failed to update page content: %w", err))
 		}
-		// Refresh blocks
-		return m.fetchBlocks()
+		// Refresh list and stay in editor?
+		// User wants list reload. AppModel's PageUpdatedMsg handler switches to list.
+		return PageUpdatedMsg(m.page)
 	}
 }
 
@@ -447,6 +460,10 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 
 		case tea.KeyMsg:
 			switch msg.String() {
+			case "esc":
+				if m.mode == modeCreate || m.mode == modeEdit {
+					return m, func() tea.Msg { return CancelEditMsg{} }
+				}
 			case "up":
 				m.inputs[m.focusedIdx].Blur()
 				m.focusedIdx--
@@ -504,7 +521,7 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "o":
+		case "b":
 			if m.page != nil {
 				_ = openBrowser(m.page.URL)
 			}
@@ -520,7 +537,6 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 
 		if !m.ready {
 			m.viewport = viewport.New(msg.Width, msg.Height-1)
-			m.viewport.HighPerformanceRendering = false
 			m.ready = true
 		} else {
 			m.viewport.Width = msg.Width
@@ -559,6 +575,14 @@ func (m EditorModel) View() string {
 			{"Esc", "Cancel"},
 		})
 
+		// Fill the middle area to push footer to the bottom
+		contentHeight := lipgloss.Height(s.String())
+		footerHeight := lipgloss.Height(footer)
+		paddingHeight := m.height - contentHeight - footerHeight
+		if paddingHeight > 0 {
+			s.WriteString(strings.Repeat("\n", paddingHeight))
+		}
+
 		return lipgloss.JoinVertical(lipgloss.Left,
 			DocStyle.Render(s.String()),
 			footer,
@@ -570,7 +594,8 @@ func (m EditorModel) View() string {
 	}
 
 	footer := renderFooter(m.width, []keyHelp{
-		{"o", "Open"},
+		{"b", "Open"},
+		{"o", "Omnisearch"},
 		{"e", "Edit Prop"},
 		{"O", "Edit Content"},
 		{"Esc", "Back"},

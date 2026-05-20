@@ -1,3 +1,4 @@
+// Package tui provides terminal user interface components.
 package tui
 
 import (
@@ -44,7 +45,7 @@ func NewRecordsModel(client *notion.Client) RecordsModel {
 	columns := []table.Column{
 		{Title: "Title", Width: 30},
 	}
-	
+
 	t := table.New(
 		table.WithColumns(columns),
 		table.WithFocused(true),
@@ -107,7 +108,7 @@ func (m *RecordsModel) updateTable() {
 
 	// Dynamically create columns based on properties of the first page
 	propertyKeys := []string{}
-	
+
 	// Find title property first to put it in the first column
 	titleKey := ""
 	for k, p := range m.allPages[0].Properties {
@@ -225,7 +226,7 @@ func (m RecordsModel) Update(msg tea.Msg) (RecordsModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "o":
+		case "b":
 			idx := m.table.Cursor()
 			if idx >= 0 && idx < len(m.pages) {
 				_ = openBrowser(m.pages[idx].URL)
@@ -269,6 +270,7 @@ func (m RecordsModel) Update(msg tea.Msg) (RecordsModel, tea.Cmd) {
 		m.loading = false
 		m.allPages = msg.Results
 		m.updateTable()
+		m.table.SetCursor(0)
 
 	case errMsg:
 		m.err = msg
@@ -295,7 +297,8 @@ func (m RecordsModel) View() string {
 	}
 
 	footer := renderFooter(m.width, []keyHelp{
-		{"o", "Open"},
+		{"b", "Open"},
+		{"o", "Omnisearch"},
 		{"a", "New"},
 		{"/", "Filter"},
 		{"Enter", "Detail"},
