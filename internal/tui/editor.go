@@ -26,7 +26,6 @@ const (
 	modeCreate
 	modeEdit
 )
-
 // EditorModel is a Bubble Tea model for viewing and editing Notion pages.
 type EditorModel struct {
 	viewport     viewport.Model
@@ -39,6 +38,7 @@ type EditorModel struct {
 	page         *notionapi.Page
 	blocks       []notionapi.Block
 	blocksLoaded bool
+	titleCache   map[string]string // ID -> Title
 	focusedIdx   int
 	tempFile     string
 	err          error
@@ -51,11 +51,15 @@ type EditorModel struct {
 // NewEditorModel creates a new EditorModel.
 func NewEditorModel(client *notion.Client) EditorModel {
 	return EditorModel{
-		client: client,
+		client:     client,
+		titleCache: make(map[string]string),
 	}
 }
 
-// Init initializes the EditorModel.
+type blocksMsg []notionapi.Block
+type relationTitlesMsg map[string]string
+type editorFinishedMsg struct{ err error }
+
 func (m EditorModel) Init() tea.Cmd {
 	return nil
 }
@@ -69,16 +73,57 @@ type PageUpdatedMsg *notionapi.Page
 // CancelEditMsg is a message sent when the user cancels an edit or create operation.
 type CancelEditMsg struct{}
 
-type blocksMsg []notionapi.Block
-type editorFinishedMsg struct{ err error }
-
 func (m *EditorModel) SetPage(page *notionapi.Page) tea.Cmd {
 	m.mode = modeView
 	m.page = page
 	m.blocks = nil
 	m.blocksLoaded = false
 	m.updateContent()
-	return m.fetchBlocks
+	return tea.Batch(m.fetchBlocks, m.resolveRelationTitles)
+}
+
+func (m *EditorModel) resolveRelationTitles() tea.Msg {
+	if m.page == nil {
+		return nil
+	}
+
+	idsToFetch := []string{}
+	for _, prop := range m.page.Properties {
+		if rel, ok := prop.(*notionapi.RelationProperty); ok {
+			for _, r := range rel.Relation {
+				id := string(r.ID)
+				if _, cached := m.titleCache[id]; !cached {
+					idsToFetch = append(idsToFetch, id)
+				}
+			}
+		}
+	}
+
+	if len(idsToFetch) == 0 {
+		return nil
+	}
+
+	newTitles := make(map[string]string)
+	for _, id := range idsToFetch {
+		p, err := m.client.Page.Get(context.Background(), notionapi.PageID(id))
+		if err != nil {
+			newTitles[id] = "(error fetching title)"
+			continue
+		}
+		title := ""
+		for _, prop := range p.Properties {
+			if t, ok := prop.(*notionapi.TitleProperty); ok {
+				title = notion.PropertyToString(t)
+				break
+			}
+		}
+		if title == "" {
+			title = "Untitled"
+		}
+		newTitles[id] = title
+	}
+
+	return relationTitlesMsg(newTitles)
 }
 
 func (m EditorModel) fetchBlocks() tea.Msg {
@@ -336,6 +381,25 @@ func (m *EditorModel) updateContent() {
 		icon := notion.PropertyToIcon(prop)
 		label := lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Bold(true).Render(icon + " " + name + ": ")
 		value := notion.PropertyToString(prop)
+
+		// Handle Relation property with cached titles
+		if rel, ok := prop.(*notionapi.RelationProperty); ok {
+			var titles []string
+			for _, r := range rel.Relation {
+				id := string(r.ID)
+				if title, cached := m.titleCache[id]; cached {
+					titles = append(titles, title)
+				} else {
+					titles = append(titles, "(loading...)")
+				}
+			}
+			if len(titles) > 0 {
+				value = "🔗 " + strings.Join(titles, ", ")
+			} else {
+				value = ""
+			}
+		}
+
 		if value == "" {
 			value = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(empty)")
 		}
@@ -516,6 +580,13 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 		m.blocks = msg
 		m.blocksLoaded = true
 		m.loading = false
+		m.updateContent()
+		return m, nil
+
+	case relationTitlesMsg:
+		for id, title := range msg {
+			m.titleCache[id] = title
+		}
 		m.updateContent()
 		return m, nil
 

@@ -7,6 +7,7 @@ import (
 	"noctl/internal/config"
 	"noctl/internal/notion"
 
+	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/jomei/notionapi"
@@ -91,6 +92,14 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "o":
 			if m.state != viewOmnisearch {
+				// Don't trigger if we are filtering in DB list or Records view
+				if m.state == viewDBList && m.dbList.list.FilterState() == list.Filtering {
+					break
+				}
+				if m.state == viewRecords && m.records.filtering {
+					break
+				}
+
 				m.pushState(viewOmnisearch)
 				m.omnisearch.input.SetValue("")
 				m.omnisearch.list.SetItems(nil)

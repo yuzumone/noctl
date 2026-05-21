@@ -7,6 +7,26 @@ import (
 	"github.com/jomei/notionapi"
 )
 
+// QueryDatabaseAll fetches all pages from a specific database by iterating through all pages.
+func (c *Client) QueryDatabaseAll(ctx context.Context, dbID string) ([]notionapi.Page, error) {
+	var pages []notionapi.Page
+	var cursor notionapi.Cursor
+
+	for {
+		res, err := c.QueryDatabase(ctx, dbID, cursor)
+		if err != nil {
+			return nil, err
+		}
+		pages = append(pages, res.Results...)
+		if !res.HasMore {
+			break
+		}
+		cursor = res.NextCursor
+	}
+
+	return pages, nil
+}
+
 // QueryDatabase fetches pages from a specific database.
 func (c *Client) QueryDatabase(ctx context.Context, dbID string, cursor notionapi.Cursor) (*notionapi.DatabaseQueryResponse, error) {
 	req := &notionapi.DatabaseQueryRequest{

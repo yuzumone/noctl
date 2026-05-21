@@ -4,6 +4,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"noctl/internal/notion"
@@ -30,7 +31,7 @@ type RecordsModel struct {
 	height      int
 }
 
-type recordsMsg *notionapi.DatabaseQueryResponse
+type recordsMsg []notionapi.Page
 type SelectPageMsg struct {
 	Page *notionapi.Page
 }
@@ -79,6 +80,7 @@ func (m RecordsModel) Init() tea.Cmd {
 	return nil
 }
 
+// SetDatabase sets the database for the records view and triggers fetching of all pages.
 func (m *RecordsModel) SetDatabase(id string, name string) tea.Cmd {
 	m.dbID = id
 	m.dbName = name
@@ -87,16 +89,16 @@ func (m *RecordsModel) SetDatabase(id string, name string) tea.Cmd {
 	m.pages = nil
 	m.filterInput.SetValue("")
 	m.table.SetRows([]table.Row{})
-	m.table.SetColumns([]table.Column{{Title: "Loading...", Width: m.width}})
-	return m.fetchRecords
+	m.table.SetColumns([]table.Column{{Title: "Loading all records...", Width: m.width}})
+	return m.fetchAllRecords
 }
 
-func (m RecordsModel) fetchRecords() tea.Msg {
-	res, err := m.client.QueryDatabase(context.Background(), m.dbID, "")
+func (m RecordsModel) fetchAllRecords() tea.Msg {
+	pages, err := m.client.QueryDatabaseAll(context.Background(), m.dbID)
 	if err != nil {
 		return errMsg(fmt.Errorf("failed to fetch records for %s: %w", m.dbName, err))
 	}
-	return recordsMsg(res)
+	return recordsMsg(pages)
 }
 
 func (m *RecordsModel) updateTable() {
@@ -122,13 +124,16 @@ func (m *RecordsModel) updateTable() {
 		propertyKeys = append(propertyKeys, titleKey)
 	}
 
-	// Add other properties
+	// Add other properties sorted alphabetically
+	var otherKeys []string
 	for k := range m.allPages[0].Properties {
 		if k == titleKey {
 			continue
 		}
-		propertyKeys = append(propertyKeys, k)
+		otherKeys = append(otherKeys, k)
 	}
+	sort.Strings(otherKeys)
+	propertyKeys = append(propertyKeys, otherKeys...)
 
 	// Calculate column widths to fill terminal and minimize truncation
 	numCols := len(propertyKeys)
@@ -268,7 +273,7 @@ func (m RecordsModel) Update(msg tea.Msg) (RecordsModel, tea.Cmd) {
 
 	case recordsMsg:
 		m.loading = false
-		m.allPages = msg.Results
+		m.allPages = msg
 		m.updateTable()
 		m.table.SetCursor(0)
 

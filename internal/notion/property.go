@@ -1,8 +1,10 @@
+// Package notion handles Notion block conversions and API interactions.
 package notion
 
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jomei/notionapi"
 )
@@ -15,6 +17,9 @@ func PropertyToString(prop notionapi.Property) string {
 	case *notionapi.RichTextProperty:
 		return TextItemsToString(p.RichText)
 	case *notionapi.SelectProperty:
+		if p.Select.Name == "" {
+			return ""
+		}
 		return p.Select.Name
 	case *notionapi.MultiSelectProperty:
 		var names []string
@@ -33,11 +38,57 @@ func PropertyToString(prop notionapi.Property) string {
 		if p.Date == nil {
 			return ""
 		}
-		s := p.Date.Start.String()
+		formatDate := func(dt *notionapi.Date) string {
+			if dt == nil {
+				return ""
+			}
+			t := time.Time(*dt)
+			s := t.Format("2006-01-02")
+			if t.Hour() != 0 || t.Minute() != 0 || t.Second() != 0 {
+				s = t.Format("2006-01-02 15:04")
+			}
+			return s
+		}
+		s := formatDate(p.Date.Start)
 		if p.Date.End != nil {
-			s += " -> " + p.Date.End.String()
+			s += " -> " + formatDate(p.Date.End)
 		}
 		return s
+	case *notionapi.CreatedTimeProperty:
+		return p.CreatedTime.Format("2006-01-02 15:04")
+	case *notionapi.LastEditedTimeProperty:
+		return p.LastEditedTime.Format("2006-01-02 15:04")
+	case *notionapi.PeopleProperty:
+		var names []string
+		for _, person := range p.People {
+			names = append(names, person.Name)
+		}
+		return strings.Join(names, ", ")
+	case *notionapi.CreatedByProperty:
+		return p.CreatedBy.Name
+	case *notionapi.LastEditedByProperty:
+		return p.LastEditedBy.Name
+	case *notionapi.RelationProperty:
+		count := len(p.Relation)
+		if count == 0 {
+			return "🔗 (none)"
+		}
+		if count == 1 {
+			return "🔗 1 relation"
+		}
+		return fmt.Sprintf("🔗 %d relations", count)
+	case *notionapi.RollupProperty:
+		switch p.Rollup.Type {
+		case notionapi.RollupTypeNumber:
+			return fmt.Sprintf("%v", p.Rollup.Number)
+		case notionapi.RollupTypeDate:
+			if p.Rollup.Date != nil {
+				return time.Time(*p.Rollup.Date.Start).Format("2006-01-02")
+			}
+		case notionapi.RollupTypeArray:
+			return fmt.Sprintf("%d items", len(p.Rollup.Array))
+		}
+		return string(p.Rollup.Type)
 	case *notionapi.URLProperty:
 		return p.URL
 	case *notionapi.EmailProperty:
@@ -64,8 +115,9 @@ func PropertyToString(prop notionapi.Property) string {
 			if p.Formula.Date == nil {
 				return ""
 			}
-			return p.Formula.Date.Start.String()
+			return time.Time(*p.Formula.Date.Start).Format("2006-01-02")
 		}
+		return string(p.Formula.Type)
 	}
 	return ""
 }
