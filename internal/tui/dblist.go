@@ -69,6 +69,15 @@ func (m DBListModel) fetchDatabases() tea.Msg {
 func (m DBListModel) Update(msg tea.Msg) (DBListModel, tea.Cmd) {
 	var cmd tea.Cmd
 
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		switch keyMsg.String() {
+		case "ctrl+n":
+			msg = tea.KeyMsg{Type: tea.KeyDown}
+		case "ctrl+p":
+			msg = tea.KeyMsg{Type: tea.KeyUp}
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {

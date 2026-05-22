@@ -20,6 +20,7 @@ const (
 	viewRecords
 	viewEditor
 	viewOmnisearch
+	viewSelector
 )
 
 // AppModel is the root model for the application.
@@ -33,6 +34,7 @@ type AppModel struct {
 	records    RecordsModel
 	editor     EditorModel
 	omnisearch OmnisearchModel
+	selector   SelectorModel
 
 	width  int
 	height int
@@ -55,6 +57,7 @@ func NewAppModel(cfg *config.Config) *AppModel {
 		records:    NewRecordsModel(client),
 		editor:     NewEditorModel(client),
 		omnisearch: NewOmnisearchModel(client),
+		selector:   NewSelectorModel(),
 	}
 }
 
@@ -133,6 +136,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.records, _ = m.records.Update(msg)
 		m.editor, _ = m.editor.Update(msg)
 		m.omnisearch, _ = m.omnisearch.Update(msg)
+		m.selector, _ = m.selector.Update(msg)
 
 	case SelectDBMsg:
 		m.pushState(viewRecords)
@@ -178,6 +182,20 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case CancelOmnisearchMsg:
 		m.popState()
 		return m, nil
+
+	case OpenSelectorMsg:
+		m.selector.SetOptions(msg.PropName, msg.IsMulti, msg.Options, msg.CurrentValues)
+		m.pushState(viewSelector)
+		return m, nil
+
+	case SelectorDoneMsg:
+		m.popState()
+		m.editor, cmd = m.editor.Update(msg)
+		return m, cmd
+
+	case CancelSelectorMsg:
+		m.popState()
+		return m, nil
 	}
 
 	// Delegate to sub-models
@@ -193,6 +211,9 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	case viewOmnisearch:
 		m.omnisearch, cmd = m.omnisearch.Update(msg)
+		cmds = append(cmds, cmd)
+	case viewSelector:
+		m.selector, cmd = m.selector.Update(msg)
 		cmds = append(cmds, cmd)
 	}
 
@@ -217,8 +238,8 @@ func (m *AppModel) View() string {
 		baseView = m.records.View()
 	case viewEditor:
 		baseView = m.editor.View()
-	case viewOmnisearch:
-		// If search is active, show the previous state in the background if available
+	case viewOmnisearch, viewSelector:
+		// If search or selector is active, show the previous state in the background
 		if len(m.history) > 0 {
 			switch m.history[len(m.history)-1] {
 			case viewDBList:
@@ -239,7 +260,11 @@ func (m *AppModel) View() string {
 
 	if m.state == viewOmnisearch {
 		popup := m.omnisearch.View()
-		// Overlay the popup in the center
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, popup)
+	}
+
+	if m.state == viewSelector {
+		popup := m.selector.View()
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, popup)
 	}
 

@@ -101,6 +101,15 @@ func (m OmnisearchModel) Update(msg tea.Msg) (OmnisearchModel, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		switch keyMsg.String() {
+		case "ctrl+n":
+			msg = tea.KeyMsg{Type: tea.KeyDown}
+		case "ctrl+p":
+			msg = tea.KeyMsg{Type: tea.KeyUp}
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {

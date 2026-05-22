@@ -190,24 +190,34 @@ func (m *EditorModel) initCreateInputs(db *notionapi.Database) {
 		m.propKeys = append(m.propKeys, titleKey)
 	}
 
+	var otherKeys []string
 	for k, p := range db.Properties {
 		if k == titleKey {
 			continue
 		}
-		// Support simple types for now
+		// Support simple and selection types
 		switch p.GetType() {
 		case notionapi.PropertyConfigTypeRichText,
 			notionapi.PropertyConfigTypeNumber,
 			notionapi.PropertyConfigTypeURL,
 			notionapi.PropertyConfigTypeEmail,
-			notionapi.PropertyConfigTypePhoneNumber:
-			m.propKeys = append(m.propKeys, k)
+			notionapi.PropertyConfigTypePhoneNumber,
+			notionapi.PropertyConfigTypeSelect,
+			notionapi.PropertyConfigTypeMultiSelect:
+			otherKeys = append(otherKeys, k)
 		}
 	}
+	sort.Strings(otherKeys)
+	m.propKeys = append(m.propKeys, otherKeys...)
 
 	for _, k := range m.propKeys {
 		ti := textinput.New()
 		ti.Placeholder = k
+		config := m.propConfigs[k]
+		if config.GetType() == notionapi.PropertyConfigTypeSelect || config.GetType() == notionapi.PropertyConfigTypeMultiSelect {
+			ti.Placeholder = k + " (Tab to select)"
+			ti.Prompt = "󰦪 "
+		}
 		m.inputs = append(m.inputs, ti)
 	}
 
@@ -234,24 +244,34 @@ func (m *EditorModel) initEditInputs(db *notionapi.Database) {
 		m.propKeys = append(m.propKeys, titleKey)
 	}
 
+	var otherKeys []string
 	for k, p := range db.Properties {
 		if k == titleKey {
 			continue
 		}
-		// Support simple types
+		// Support simple and selection types
 		switch p.GetType() {
 		case notionapi.PropertyConfigTypeRichText,
 			notionapi.PropertyConfigTypeNumber,
 			notionapi.PropertyConfigTypeURL,
 			notionapi.PropertyConfigTypeEmail,
-			notionapi.PropertyConfigTypePhoneNumber:
-			m.propKeys = append(m.propKeys, k)
+			notionapi.PropertyConfigTypePhoneNumber,
+			notionapi.PropertyConfigTypeSelect,
+			notionapi.PropertyConfigTypeMultiSelect:
+			otherKeys = append(otherKeys, k)
 		}
 	}
+	sort.Strings(otherKeys)
+	m.propKeys = append(m.propKeys, otherKeys...)
 
 	for _, k := range m.propKeys {
 		ti := textinput.New()
 		ti.Placeholder = k
+		config := m.propConfigs[k]
+		if config.GetType() == notionapi.PropertyConfigTypeSelect || config.GetType() == notionapi.PropertyConfigTypeMultiSelect {
+			ti.Placeholder = k + " (Tab to select)"
+			ti.Prompt = "󰦪 "
+		}
 		// Set current value
 		if m.page != nil {
 			if prop, ok := m.page.Properties[k]; ok {
@@ -296,6 +316,22 @@ func (m EditorModel) createPage() tea.Cmd {
 				props[k] = notionapi.EmailProperty{Email: val}
 			case notionapi.PropertyConfigTypePhoneNumber:
 				props[k] = notionapi.PhoneNumberProperty{PhoneNumber: val}
+			case notionapi.PropertyConfigTypeSelect:
+				if strings.TrimSpace(val) != "" {
+					props[k] = notionapi.SelectProperty{
+						Select: notionapi.Option{Name: strings.TrimSpace(val)},
+					}
+				}
+			case notionapi.PropertyConfigTypeMultiSelect:
+				options := []notionapi.Option{}
+				for _, v := range strings.Split(val, ", ") {
+					if strings.TrimSpace(v) != "" {
+						options = append(options, notionapi.Option{Name: strings.TrimSpace(v)})
+					}
+				}
+				props[k] = notionapi.MultiSelectProperty{
+					MultiSelect: options,
+				}
 			}
 		}
 
@@ -334,6 +370,22 @@ func (m EditorModel) updatePage() tea.Cmd {
 				props[k] = notionapi.EmailProperty{Email: val}
 			case notionapi.PropertyConfigTypePhoneNumber:
 				props[k] = notionapi.PhoneNumberProperty{PhoneNumber: val}
+			case notionapi.PropertyConfigTypeSelect:
+				if strings.TrimSpace(val) != "" {
+					props[k] = notionapi.SelectProperty{
+						Select: notionapi.Option{Name: strings.TrimSpace(val)},
+					}
+				}
+			case notionapi.PropertyConfigTypeMultiSelect:
+				options := []notionapi.Option{}
+				for _, v := range strings.Split(val, ", ") {
+					if strings.TrimSpace(v) != "" {
+						options = append(options, notionapi.Option{Name: strings.TrimSpace(v)})
+					}
+				}
+				props[k] = notionapi.MultiSelectProperty{
+					MultiSelect: options,
+				}
 			}
 		}
 
@@ -504,6 +556,15 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		switch keyMsg.String() {
+		case "ctrl+n":
+			msg = tea.KeyMsg{Type: tea.KeyDown}
+		case "ctrl+p":
+			msg = tea.KeyMsg{Type: tea.KeyUp}
+		}
+	}
+
 	if m.mode == modeCreate || m.mode == modeEdit {
 		switch msg := msg.(type) {
 		case *notionapi.Database:
@@ -522,6 +583,15 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 			m.loading = false
 			return m, func() tea.Msg { return msg }
 
+		case SelectorDoneMsg:
+			for i, k := range m.propKeys {
+				if k == msg.PropName {
+					m.inputs[i].SetValue(strings.Join(msg.Values, ", "))
+					break
+				}
+			}
+			return m, nil
+
 		case tea.KeyMsg:
 			switch msg.String() {
 			case "esc":
@@ -536,6 +606,36 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 				}
 				m.inputs[m.focusedIdx].Focus()
 			case "down", "tab", "enter":
+				key := m.propKeys[m.focusedIdx]
+				config := m.propConfigs[key]
+
+				if msg.String() == "tab" && (config.GetType() == notionapi.PropertyConfigTypeSelect || config.GetType() == notionapi.PropertyConfigTypeMultiSelect) {
+					var options []SelectorOption
+					isMulti := false
+					if config.GetType() == notionapi.PropertyConfigTypeSelect {
+						cfg := config.(*notionapi.SelectPropertyConfig)
+						for _, o := range cfg.Select.Options {
+							options = append(options, SelectorOption{Name: o.Name, Color: string(o.Color)})
+						}
+					} else {
+						isMulti = true
+						cfg := config.(*notionapi.MultiSelectPropertyConfig)
+						for _, o := range cfg.MultiSelect.Options {
+							options = append(options, SelectorOption{Name: o.Name, Color: string(o.Color)})
+						}
+					}
+
+					current := strings.Split(m.inputs[m.focusedIdx].Value(), ", ")
+					return m, func() tea.Msg {
+						return OpenSelectorMsg{
+							PropName:      key,
+							IsMulti:       isMulti,
+							Options:       options,
+							CurrentValues: current,
+						}
+					}
+				}
+
 				if msg.String() == "enter" && m.focusedIdx == len(m.inputs)-1 {
 					m.loading = true
 					if m.mode == modeCreate {
@@ -561,6 +661,20 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 		}
 
 		for i := range m.inputs {
+			if i == m.focusedIdx {
+				key := m.propKeys[i]
+				config := m.propConfigs[key]
+				if config.GetType() == notionapi.PropertyConfigTypeSelect || config.GetType() == notionapi.PropertyConfigTypeMultiSelect {
+					if km, ok := msg.(tea.KeyMsg); ok {
+						s := km.String()
+						// Block printable characters, backspace, and delete
+						// Allow navigation, tab, esc, ctrl+s
+						if len(s) == 1 || s == "backspace" || s == "delete" {
+							continue
+						}
+					}
+				}
+			}
 			m.inputs[i], cmd = m.inputs[i].Update(msg)
 			cmds = append(cmds, cmd)
 		}
@@ -598,7 +712,7 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 			}
 		case "e":
 			return m, m.SetEditMode(m.page)
-		case "O":
+		case "E":
 			return m, m.openInEditor()
 		}
 
@@ -668,7 +782,7 @@ func (m EditorModel) View() string {
 		{"b", "Open"},
 		{"o", "Omnisearch"},
 		{"e", "Edit Prop"},
-		{"O", "Edit Content"},
+		{"E", "Edit Content"},
 		{"Esc", "Back"},
 		{"q", "Quit"},
 	})

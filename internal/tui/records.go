@@ -217,6 +217,12 @@ func (m RecordsModel) Update(msg tea.Msg) (RecordsModel, tea.Cmd) {
 		switch msg := msg.(type) {
 		case tea.KeyMsg:
 			switch msg.String() {
+			case "ctrl+n", "down":
+				m.table, cmd = m.table.Update(tea.KeyMsg{Type: tea.KeyDown})
+				return m, cmd
+			case "ctrl+p", "up":
+				m.table, cmd = m.table.Update(tea.KeyMsg{Type: tea.KeyUp})
+				return m, cmd
 			case "enter", "esc":
 				m.filtering = false
 				m.filterInput.Blur()
@@ -226,6 +232,15 @@ func (m RecordsModel) Update(msg tea.Msg) (RecordsModel, tea.Cmd) {
 		m.filterInput, cmd = m.filterInput.Update(msg)
 		m.updateTable()
 		return m, cmd
+	}
+
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		switch keyMsg.String() {
+		case "ctrl+n":
+			msg = tea.KeyMsg{Type: tea.KeyDown}
+		case "ctrl+p":
+			msg = tea.KeyMsg{Type: tea.KeyUp}
+		}
 	}
 
 	switch msg := msg.(type) {
