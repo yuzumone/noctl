@@ -56,12 +56,12 @@ func NewRecordsModel(client *notion.Client) RecordsModel {
 	s := table.DefaultStyles()
 	s.Header = s.Header.
 		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("240")).
+		BorderForeground(lipgloss.Color(ActiveTheme.Dimmed)).
 		BorderBottom(true).
 		Bold(false)
 	s.Selected = s.Selected.
-		Foreground(lipgloss.Color("229")).
-		Background(lipgloss.Color("57")).
+		Foreground(lipgloss.Color(ActiveTheme.SelectFg)).
+		Background(lipgloss.Color(ActiveTheme.SelectBg)).
 		Bold(false)
 	t.SetStyles(s)
 

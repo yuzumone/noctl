@@ -21,6 +21,7 @@ const (
 	viewEditor
 	viewOmnisearch
 	viewSelector
+	viewConfirm
 )
 
 // AppModel is the root model for the application.
@@ -35,6 +36,7 @@ type AppModel struct {
 	editor     EditorModel
 	omnisearch OmnisearchModel
 	selector   SelectorModel
+	confirm    ConfirmModel
 
 	width  int
 	height int
@@ -43,6 +45,8 @@ type AppModel struct {
 
 // NewAppModel creates a new AppModel.
 func NewAppModel(cfg *config.Config) *AppModel {
+	InitStyles(cfg)
+
 	var client *notion.Client
 	if cfg.NotionToken != "" {
 		client = notion.NewClient(cfg.NotionToken)
@@ -58,6 +62,7 @@ func NewAppModel(cfg *config.Config) *AppModel {
 		editor:     NewEditorModel(client),
 		omnisearch: NewOmnisearchModel(client),
 		selector:   NewSelectorModel(),
+		confirm:    NewConfirmModel("Quit noctl?"),
 	}
 }
 
@@ -78,6 +83,23 @@ func (m *AppModel) popState() {
 	m.history = m.history[:last]
 }
 
+// isInInputMode returns true when the user is actively typing in an input field.
+func (m *AppModel) isInInputMode() bool {
+	if m.state == viewOmnisearch {
+		return true
+	}
+	if m.state == viewEditor && (m.editor.mode == modeCreate || m.editor.mode == modeEdit) {
+		return true
+	}
+	if m.state == viewDBList && m.dbList.list.FilterState() == list.Filtering {
+		return true
+	}
+	if m.state == viewRecords && m.records.filtering {
+		return true
+	}
+	return false
+}
+
 // Init initializes the application.
 func (m *AppModel) Init() tea.Cmd {
 	return m.dbList.Init()
@@ -91,8 +113,22 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "q", "ctrl+c":
+		case "ctrl+c":
 			return m, tea.Quit
+		case "q":
+			// Don't intercept q when typing
+			if m.isInInputMode() {
+				break
+			}
+			// Don't stack confirm on top of confirm
+			if m.state == viewConfirm {
+				break
+			}
+			m.confirm = NewConfirmModel("Quit noctl?")
+			m.confirm.width = m.width
+			m.confirm.height = m.height
+			m.pushState(viewConfirm)
+			return m, nil
 		case "o":
 			if m.state != viewOmnisearch {
 				// Don't trigger if we are filtering in DB list or Records view
@@ -129,6 +165,13 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case ConfirmYesMsg:
+		return m, tea.Quit
+
+	case ConfirmNoMsg:
+		m.popState()
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -137,6 +180,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.editor, _ = m.editor.Update(msg)
 		m.omnisearch, _ = m.omnisearch.Update(msg)
 		m.selector, _ = m.selector.Update(msg)
+		m.confirm, _ = m.confirm.Update(msg)
 
 	case SelectDBMsg:
 		m.pushState(viewRecords)
@@ -215,9 +259,27 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case viewSelector:
 		m.selector, cmd = m.selector.Update(msg)
 		cmds = append(cmds, cmd)
+	case viewConfirm:
+		m.confirm, cmd = m.confirm.Update(msg)
+		cmds = append(cmds, cmd)
 	}
 
 	return m, tea.Batch(cmds...)
+}
+
+// backgroundView returns the underlying screen view for use behind popups.
+func (m *AppModel) backgroundView() string {
+	if len(m.history) > 0 {
+		switch m.history[len(m.history)-1] {
+		case viewDBList:
+			return m.dbList.View()
+		case viewRecords:
+			return m.records.View()
+		case viewEditor:
+			return m.editor.View()
+		}
+	}
+	return m.dbList.View()
 }
 
 // View renders the application.
@@ -238,22 +300,9 @@ func (m *AppModel) View() string {
 		baseView = m.records.View()
 	case viewEditor:
 		baseView = m.editor.View()
-	case viewOmnisearch, viewSelector:
-		// If search or selector is active, show the previous state in the background
-		if len(m.history) > 0 {
-			switch m.history[len(m.history)-1] {
-			case viewDBList:
-				baseView = m.dbList.View()
-			case viewRecords:
-				baseView = m.records.View()
-			case viewEditor:
-				baseView = m.editor.View()
-			default:
-				baseView = m.dbList.View()
-			}
-		} else {
-			baseView = m.dbList.View()
-		}
+	case viewOmnisearch, viewSelector, viewConfirm:
+		// If popup is active, show the previous state in the background
+		baseView = m.backgroundView()
 	default:
 		return "Unknown state"
 	}
@@ -265,6 +314,11 @@ func (m *AppModel) View() string {
 
 	if m.state == viewSelector {
 		popup := m.selector.View()
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, popup)
+	}
+
+	if m.state == viewConfirm {
+		popup := m.confirm.View()
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, popup)
 	}
 

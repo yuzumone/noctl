@@ -56,18 +56,18 @@ func NewOmnisearchModel(client *notion.Client) OmnisearchModel {
 	delegate := list.NewDefaultDelegate()
 	// Customize delegate to be more minimal by unsetting backgrounds
 	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
-		Foreground(lipgloss.Color("229")).
+		Foreground(lipgloss.Color(ActiveTheme.SelectFg)).
 		UnsetBackground().
-		BorderLeftForeground(lipgloss.Color("57")).
+		BorderLeftForeground(lipgloss.Color(ActiveTheme.Border)).
 		Bold(false)
 	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.
-		Foreground(lipgloss.Color("240")).
+		Foreground(lipgloss.Color(ActiveTheme.Dimmed)).
 		UnsetBackground().
-		BorderLeftForeground(lipgloss.Color("57"))
+		BorderLeftForeground(lipgloss.Color(ActiveTheme.Border))
 	delegate.Styles.NormalTitle = delegate.Styles.NormalTitle.
-		Foreground(lipgloss.Color("252"))
+		Foreground(lipgloss.Color(ActiveTheme.TitleFg))
 	delegate.Styles.NormalDesc = delegate.Styles.NormalDesc.
-		Foreground(lipgloss.Color("245"))
+		Foreground(lipgloss.Color(ActiveTheme.Dimmed))
 
 	l := list.New([]list.Item{}, delegate, 0, 0)
 	l.SetShowTitle(false)
@@ -232,7 +232,7 @@ func (m OmnisearchModel) View() string {
 
 	searchBar := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder(), false, false, true, false).
-		BorderForeground(lipgloss.Color("57")).
+		BorderForeground(lipgloss.Color(ActiveTheme.Border)).
 		Width(popupWidth - 4).
 		Padding(0, 1).
 		Render(m.input.View())
@@ -245,7 +245,7 @@ func (m OmnisearchModel) View() string {
 
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("57")).
+		BorderForeground(lipgloss.Color(ActiveTheme.Border)).
 		Width(popupWidth - 2).
 		Height(popupHeight - 2).
 		Render(content)

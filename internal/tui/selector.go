@@ -63,9 +63,9 @@ func NewSelectorModel() SelectorModel {
 	delegate := list.NewDefaultDelegate()
 	delegate.ShowDescription = false
 	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
-		Foreground(lipgloss.Color("229")).
+		Foreground(lipgloss.Color(ActiveTheme.SelectFg)).
 		UnsetBackground().
-		BorderLeftForeground(lipgloss.Color("57")).
+		BorderLeftForeground(lipgloss.Color(ActiveTheme.Border)).
 		Bold(false)
 
 	l := list.New([]list.Item{}, delegate, 0, 0)
@@ -185,7 +185,7 @@ func (m SelectorModel) View() string {
 
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("57")).
+		BorderForeground(lipgloss.Color(ActiveTheme.Border)).
 		Width(popupWidth - 2).
 		Height(popupHeight - 2).
 		Render(content)

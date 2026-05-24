@@ -415,7 +415,7 @@ func (m *EditorModel) updateContent() {
 
 	titleIcon := notion.PropertyToIcon(m.page.Properties[titleKey])
 	content.WriteString(TitleStyle.Width(m.width).Padding(0, 1).Render(titleIcon+" "+notion.PropertyToString(m.page.Properties[titleKey])) + "\n\n")
-	content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("ID: "+string(m.page.ID)) + "\n\n")
+	content.WriteString(DimmedStyle.Render("ID: "+string(m.page.ID)) + "\n\n")
 
 	// Properties
 	content.WriteString(lipgloss.NewStyle().Bold(true).Underline(true).Render("Properties:") + "\n")
@@ -431,7 +431,7 @@ func (m *EditorModel) updateContent() {
 	for _, name := range propNames {
 		prop := m.page.Properties[name]
 		icon := notion.PropertyToIcon(prop)
-		label := lipgloss.NewStyle().Foreground(lipgloss.Color("99")).Bold(true).Render(icon + " " + name + ": ")
+		label := LabelStyle.Render(icon + " " + name + ": ")
 		value := notion.PropertyToString(prop)
 
 		// Handle Relation property with cached titles
@@ -453,7 +453,7 @@ func (m *EditorModel) updateContent() {
 		}
 
 		if value == "" {
-			value = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(empty)")
+			value = DimmedStyle.Render("(empty)")
 		}
 		fmt.Fprintf(&content, "%s %s\n", label, value)
 	}
@@ -477,9 +477,9 @@ func (m *EditorModel) updateContent() {
 		}
 	} else if m.mode == modeView {
 		if m.blocksLoaded {
-			content.WriteString("\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("(empty content)") + "\n")
+			content.WriteString("\n" + DimmedStyle.Render("(empty content)") + "\n")
 		} else {
-			content.WriteString("\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Loading content...") + "\n")
+			content.WriteString("\n" + DimmedStyle.Render("Loading content...") + "\n")
 		}
 	}
 

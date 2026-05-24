@@ -14,6 +14,9 @@ func TestConfigLoad(t *testing.T) {
 	configContent := `
 notion_token: secret_test_token
 default_database_id: test_db_id
+theme:
+  accent: "#7D56F4"
+  select_bg: "#5F00FF"
 `
 	configPath := filepath.Join(tempHome, ".noctl.yaml")
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
@@ -44,6 +47,12 @@ default_database_id: test_db_id
 	}
 	if cfg.DefaultDatabaseID != "test_db_id" {
 		t.Errorf("expected DefaultDatabaseID test_db_id, got %s", cfg.DefaultDatabaseID)
+	}
+	if cfg.Theme.Accent != "#7D56F4" {
+		t.Errorf("expected Theme.Accent #7D56F4, got %s", cfg.Theme.Accent)
+	}
+	if cfg.Theme.SelectBg != "#5F00FF" {
+		t.Errorf("expected Theme.SelectBg #5F00FF, got %s", cfg.Theme.SelectBg)
 	}
 }
 
