@@ -96,7 +96,7 @@ func (m ConfirmModel) View() string {
 	hint := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(ActiveTheme.Dimmed)).
 		Padding(0, 2).
-		Render("y/n · ←/→ to move · Enter to confirm")
+		Render("y/n · h/l or ←/→ to move · Enter to confirm")
 
 	inner := lipgloss.JoinVertical(lipgloss.Center,
 		promptStyle.Render(m.prompt),

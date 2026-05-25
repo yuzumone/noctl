@@ -14,7 +14,10 @@ import (
 const usage = `noctl - A terminal UI tool for browsing Notion databases.
 
 Usage:
-  noctl [options]
+  noctl [command] [options]
+
+Commands:
+  calendar      Open the monthly calendar view for configured databases
 
 Options:
   -h, --help    Show this help message
@@ -30,11 +33,22 @@ Example config file (~/.config/noctl/config.yaml):
 `
 
 func main() {
+	var initialState tui.SessionState = tui.ViewDBList
+
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "--help", "-h":
 			fmt.Print(usage)
 			return
+		case "calendar":
+			if len(os.Args) > 2 {
+				switch os.Args[2] {
+				case "--help", "-h":
+					fmt.Print(usage)
+					return
+				}
+			}
+			initialState = tui.ViewCalendar
 		}
 	}
 
@@ -44,7 +58,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	p := tea.NewProgram(tui.NewAppModel(cfg), tea.WithAltScreen())
+	app := tui.NewAppModel(cfg)
+	app.SetInitialState(initialState)
+
+	runProgram(app)
+}
+
+func runProgram(app *tui.AppModel) {
+	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error running program: %v\n", err)
 		os.Exit(1)

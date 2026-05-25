@@ -47,6 +47,8 @@ type Config struct {
 	NotionToken string `mapstructure:"notion_token" yaml:"notion_token"`
 	// DefaultDatabaseID is the default database ID to load.
 	DefaultDatabaseID string `mapstructure:"default_database_id" yaml:"default_database_id"`
+	// CalendarDatabaseIDs is a list of database IDs to show in the calendar subcommand.
+	CalendarDatabaseIDs []string `mapstructure:"calendar_database_ids" yaml:"calendar_database_ids"`
 	// Theme is the custom color theme configuration.
 	Theme ThemeConfig `mapstructure:"theme" yaml:"theme"`
 }

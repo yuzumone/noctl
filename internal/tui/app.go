@@ -3,6 +3,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 
 	"noctl/internal/config"
 	"noctl/internal/notion"
@@ -13,30 +14,34 @@ import (
 	"github.com/jomei/notionapi"
 )
 
-type sessionState uint
+type SessionState uint
 
 const (
-	viewDBList sessionState = iota
-	viewRecords
-	viewEditor
-	viewOmnisearch
-	viewSelector
-	viewConfirm
+	ViewDBList SessionState = iota
+	ViewRecords
+	ViewEditor
+	ViewOmnisearch
+	ViewSelector
+	ViewConfirm
+	ViewCalendar
+	ViewCalendarDetails
 )
 
 // AppModel is the root model for the application.
 type AppModel struct {
-	state   sessionState
-	history []sessionState
+	state   SessionState
+	history []SessionState
 	config  *config.Config
 	client  *notion.Client
 
-	dbList     DBListModel
-	records    RecordsModel
-	editor     EditorModel
-	omnisearch OmnisearchModel
-	selector   SelectorModel
-	confirm    ConfirmModel
+	dbList        DBListModel
+	records       RecordsModel
+	calendar      CalendarModel
+	editor        EditorModel
+	omnisearch    OmnisearchModel
+	selector      SelectorModel
+	tableSelector TableSelectorModel
+	confirm       ConfirmModel
 
 	width  int
 	height int
@@ -53,20 +58,27 @@ func NewAppModel(cfg *config.Config) *AppModel {
 	}
 
 	return &AppModel{
-		state:      viewDBList,
-		history:    []sessionState{},
-		config:     cfg,
-		client:     client,
-		dbList:     NewDBListModel(client),
-		records:    NewRecordsModel(client),
-		editor:     NewEditorModel(client),
-		omnisearch: NewOmnisearchModel(client),
-		selector:   NewSelectorModel(),
-		confirm:    NewConfirmModel("Quit noctl?"),
+		state:         ViewDBList,
+		history:       []SessionState{},
+		config:        cfg,
+		client:        client,
+		dbList:        NewDBListModel(client),
+		records:       NewRecordsModel(client),
+		calendar:      NewCalendarModel(client),
+		editor:        NewEditorModel(client),
+		omnisearch:    NewOmnisearchModel(client),
+		selector:      NewSelectorModel(),
+		tableSelector: NewTableSelectorModel(),
+		confirm:       NewConfirmModel("Quit noctl?"),
 	}
 }
 
-func (m *AppModel) pushState(s sessionState) {
+// SetInitialState sets the initial state of the application.
+func (m *AppModel) SetInitialState(s SessionState) {
+	m.state = s
+}
+
+func (m *AppModel) pushState(s SessionState) {
 	if m.state == s {
 		return
 	}
@@ -85,16 +97,16 @@ func (m *AppModel) popState() {
 
 // isInInputMode returns true when the user is actively typing in an input field.
 func (m *AppModel) isInInputMode() bool {
-	if m.state == viewOmnisearch {
+	if m.state == ViewOmnisearch {
 		return true
 	}
-	if m.state == viewEditor && (m.editor.mode == modeCreate || m.editor.mode == modeEdit) {
+	if m.state == ViewEditor && (m.editor.mode == modeCreate || m.editor.mode == modeEdit) {
 		return true
 	}
-	if m.state == viewDBList && m.dbList.list.FilterState() == list.Filtering {
+	if m.state == ViewDBList && m.dbList.list.FilterState() == list.Filtering {
 		return true
 	}
-	if m.state == viewRecords && m.records.filtering {
+	if m.state == ViewRecords && m.records.filtering {
 		return true
 	}
 	return false
@@ -102,6 +114,9 @@ func (m *AppModel) isInInputMode() bool {
 
 // Init initializes the application.
 func (m *AppModel) Init() tea.Cmd {
+	if m.state == ViewCalendar {
+		return m.calendar.SetDatabases(m.config.CalendarDatabaseIDs)
+	}
 	return m.dbList.Init()
 }
 
@@ -121,37 +136,37 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			// Don't stack confirm on top of confirm
-			if m.state == viewConfirm {
+			if m.state == ViewConfirm {
 				break
 			}
 			m.confirm = NewConfirmModel("Quit noctl?")
 			m.confirm.width = m.width
 			m.confirm.height = m.height
-			m.pushState(viewConfirm)
+			m.pushState(ViewConfirm)
 			return m, nil
 		case "o":
-			if m.state != viewOmnisearch {
+			if m.state != ViewOmnisearch {
 				// Don't trigger if we are filtering in DB list or Records view
-				if m.state == viewDBList && m.dbList.list.FilterState() == list.Filtering {
+				if m.state == ViewDBList && m.dbList.list.FilterState() == list.Filtering {
 					break
 				}
-				if m.state == viewRecords && m.records.filtering {
+				if m.state == ViewRecords && m.records.filtering {
 					break
 				}
 
-				m.pushState(viewOmnisearch)
+				m.pushState(ViewOmnisearch)
 				m.omnisearch.input.SetValue("")
 				m.omnisearch.list.SetItems(nil)
 				m.omnisearch.input.Focus()
 				return m, nil
 			}
 		case "esc", "h":
-			// Don't trigger back on 'h' if we are in an input mode
+			// Don't trigger back on 'h' if we are in an input mode or specific views that use 'h'
 			if msg.String() == "h" {
-				if m.state == viewOmnisearch {
+				if m.state == ViewOmnisearch || m.state == ViewConfirm || m.state == ViewCalendarDetails {
 					break // Let it fall through to delegation
 				}
-				if m.state == viewEditor && (m.editor.mode == modeCreate || m.editor.mode == modeEdit) {
+				if m.state == ViewEditor && (m.editor.mode == modeCreate || m.editor.mode == modeEdit) {
 					break // Let it fall through to delegation
 				}
 			}
@@ -177,29 +192,31 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.dbList, _ = m.dbList.Update(msg)
 		m.records, _ = m.records.Update(msg)
+		m.calendar, _ = m.calendar.Update(msg)
 		m.editor, _ = m.editor.Update(msg)
 		m.omnisearch, _ = m.omnisearch.Update(msg)
 		m.selector, _ = m.selector.Update(msg)
+		m.tableSelector, _ = m.tableSelector.Update(msg)
 		m.confirm, _ = m.confirm.Update(msg)
 
 	case SelectDBMsg:
-		m.pushState(viewRecords)
+		m.pushState(ViewRecords)
 		return m, m.records.SetDatabase(msg.ID, msg.Title)
 
 	case SelectPageMsg:
-		m.pushState(viewEditor)
+		m.pushState(ViewEditor)
 		return m, m.editor.SetPage(msg.Page)
 
 	case CreateRecordMsg:
-		m.pushState(viewEditor)
+		m.pushState(ViewEditor)
 		return m, m.editor.SetCreateMode(msg.DatabaseID)
 
 	case EditRecordMsg:
-		m.pushState(viewEditor)
+		m.pushState(ViewEditor)
 		return m, m.editor.SetEditMode(msg.Page)
 
 	case PageCreatedMsg, PageUpdatedMsg:
-		m.state = viewRecords
+		m.state = ViewRecords
 		var page *notionapi.Page
 		if p, ok := msg.(PageCreatedMsg); ok {
 			page = (*notionapi.Page)(p)
@@ -227,12 +244,26 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.popState()
 		return m, nil
 
-	case OpenSelectorMsg:
-		m.selector.SetOptions(msg.PropName, msg.IsMulti, msg.Options, msg.CurrentValues)
-		m.pushState(viewSelector)
+	case OpenCalendarDetailsMsg:
+		m.tableSelector.SetPages(fmt.Sprintf("Records on %s", msg.Date.Format("2006-01-02")), msg.Pages)
+		m.pushState(ViewCalendarDetails)
 		return m, nil
 
 	case SelectorDoneMsg:
+		if m.state == ViewCalendarDetails {
+			m.popState()
+			selectedIdx := msg.SelectedIndex
+			if selectedIdx >= 0 {
+				pagesByDay := m.calendar.getPagesByDay(m.calendar.selectedDate)
+				pages := pagesByDay[m.calendar.selectedDate.Day()]
+				if selectedIdx < len(pages) {
+					page := pages[selectedIdx]
+					m.pushState(ViewEditor)
+					return m, m.editor.SetPage(&page)
+				}
+			}
+			return m, nil
+		}
 		m.popState()
 		m.editor, cmd = m.editor.Update(msg)
 		return m, cmd
@@ -244,22 +275,28 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Delegate to sub-models
 	switch m.state {
-	case viewDBList:
+	case ViewDBList:
 		m.dbList, cmd = m.dbList.Update(msg)
 		cmds = append(cmds, cmd)
-	case viewRecords:
+	case ViewRecords:
 		m.records, cmd = m.records.Update(msg)
 		cmds = append(cmds, cmd)
-	case viewEditor:
+	case ViewCalendar:
+		m.calendar, cmd = m.calendar.Update(msg)
+		cmds = append(cmds, cmd)
+	case ViewCalendarDetails:
+		m.tableSelector, cmd = m.tableSelector.Update(msg)
+		cmds = append(cmds, cmd)
+	case ViewEditor:
 		m.editor, cmd = m.editor.Update(msg)
 		cmds = append(cmds, cmd)
-	case viewOmnisearch:
+	case ViewOmnisearch:
 		m.omnisearch, cmd = m.omnisearch.Update(msg)
 		cmds = append(cmds, cmd)
-	case viewSelector:
+	case ViewSelector:
 		m.selector, cmd = m.selector.Update(msg)
 		cmds = append(cmds, cmd)
-	case viewConfirm:
+	case ViewConfirm:
 		m.confirm, cmd = m.confirm.Update(msg)
 		cmds = append(cmds, cmd)
 	}
@@ -270,13 +307,18 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // backgroundView returns the underlying screen view for use behind popups.
 func (m *AppModel) backgroundView() string {
 	if len(m.history) > 0 {
-		switch m.history[len(m.history)-1] {
-		case viewDBList:
-			return m.dbList.View()
-		case viewRecords:
-			return m.records.View()
-		case viewEditor:
-			return m.editor.View()
+		// Find the first non-popup state in history
+		for i := len(m.history) - 1; i >= 0; i-- {
+			switch m.history[i] {
+			case ViewDBList:
+				return m.dbList.View()
+			case ViewRecords:
+				return m.records.View()
+			case ViewCalendar:
+				return m.calendar.View()
+			case ViewEditor:
+				return m.editor.View()
+			}
 		}
 	}
 	return m.dbList.View()
@@ -294,33 +336,68 @@ func (m *AppModel) View() string {
 
 	var baseView string
 	switch m.state {
-	case viewDBList:
+	case ViewDBList:
 		baseView = m.dbList.View()
-	case viewRecords:
+	case ViewRecords:
 		baseView = m.records.View()
-	case viewEditor:
+	case ViewCalendar:
+		baseView = m.calendar.View()
+	case ViewEditor:
 		baseView = m.editor.View()
-	case viewOmnisearch, viewSelector, viewConfirm:
-		// If popup is active, show the previous state in the background
+	case ViewOmnisearch, ViewSelector, ViewConfirm, ViewCalendarDetails:
 		baseView = m.backgroundView()
 	default:
 		return "Unknown state"
 	}
 
-	if m.state == viewOmnisearch {
-		popup := m.omnisearch.View()
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, popup)
+	var popup string
+	switch m.state {
+	case ViewOmnisearch:
+		popup = m.omnisearch.View()
+	case ViewSelector:
+		popup = m.selector.View()
+	case ViewCalendarDetails:
+		popup = m.tableSelector.View()
+	case ViewConfirm:
+		popup = m.confirm.View()
 	}
 
-	if m.state == viewSelector {
-		popup := m.selector.View()
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, popup)
-	}
-
-	if m.state == viewConfirm {
-		popup := m.confirm.View()
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, popup)
+	if popup != "" {
+		// Overlay the popup on the base view
+		return m.renderWithPopup(baseView, popup)
 	}
 
 	return baseView
+}
+
+// renderWithPopup overlays a popup on top of a background string.
+func (m *AppModel) renderWithPopup(background, popup string) string {
+	bgLines := strings.Split(background, "\n")
+	
+	// Create centered popup string of the same size as background
+	popupCentered := lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, popup)
+	pcLines := strings.Split(popupCentered, "\n")
+	
+	finalLines := make([]string, len(bgLines))
+	for i := 0; i < len(bgLines); i++ {
+		// Use the background line as base
+		bgLine := bgLines[i]
+		if i >= len(pcLines) {
+			finalLines[i] = bgLine
+			continue
+		}
+
+		pcLine := pcLines[i]
+		
+		// If pcLine is just spaces, it's transparency, so use bgLine
+		// We use Width to handle ANSI codes correctly
+		if strings.TrimSpace(pcLine) == "" {
+			finalLines[i] = bgLine
+		} else {
+			// This is the line with the popup content (including borders)
+			finalLines[i] = pcLine
+		}
+	}
+	
+	return strings.Join(finalLines, "\n")
 }

@@ -263,6 +263,10 @@ func (m RecordsModel) Update(msg tea.Msg) (RecordsModel, tea.Cmd) {
 					return EditRecordMsg{Page: &page}
 				}
 			}
+		case "c":
+			return m, func() tea.Msg {
+				return SwitchToCalendarMsg{ID: m.dbID, Title: m.dbName}
+			}
 		case "/":
 			m.filtering = true
 			m.filterInput.Focus()
@@ -320,6 +324,7 @@ func (m RecordsModel) View() string {
 		{"b", "Open"},
 		{"o", "Omnisearch"},
 		{"a", "New"},
+		{"c", "Calendar"},
 		{"/", "Filter"},
 		{"Enter", "Detail"},
 		{"e", "Edit"},
@@ -327,8 +332,10 @@ func (m RecordsModel) View() string {
 		{"q", "Quit"},
 	})
 
+	mainView := header + m.table.View()
+
 	return lipgloss.JoinVertical(lipgloss.Left,
-		header+m.table.View(),
+		lipgloss.NewStyle().Height(m.height-1).Render(mainView),
 		footer,
 	)
 }

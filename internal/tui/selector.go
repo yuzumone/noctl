@@ -37,8 +37,9 @@ type SelectorModel struct {
 
 // SelectorDoneMsg is sent when selection is finished.
 type SelectorDoneMsg struct {
-	PropName string
-	Values   []string
+	PropName      string
+	Values        []string
+	SelectedIndex int // -1 if multi-select or nothing selected
 }
 
 // CancelSelectorMsg is sent when the selector is canceled.
@@ -143,6 +144,7 @@ func (m SelectorModel) Update(msg tea.Msg) (SelectorModel, tea.Cmd) {
 
 func (m SelectorModel) confirmSelection() tea.Msg {
 	var values []string
+	selectedIndex := -1
 	if m.isMulti {
 		for _, it := range m.list.Items() {
 			item := it.(selectorItem)
@@ -151,11 +153,12 @@ func (m SelectorModel) confirmSelection() tea.Msg {
 			}
 		}
 	} else {
+		selectedIndex = m.list.Cursor()
 		if i, ok := m.list.SelectedItem().(selectorItem); ok {
 			values = append(values, i.name)
 		}
 	}
-	return SelectorDoneMsg{PropName: m.propName, Values: values}
+	return SelectorDoneMsg{PropName: m.propName, Values: values, SelectedIndex: selectedIndex}
 }
 
 // View renders the SelectorModel as a popup.
@@ -178,8 +181,11 @@ func (m SelectorModel) View() string {
 	}
 	footer := renderFooter(popupWidth-2, footerHelps)
 
+	// Calculate internal height (popup height - 2 for borders)
+	internalHeight := popupHeight - 2
+
 	content := lipgloss.JoinVertical(lipgloss.Left,
-		m.list.View(),
+		lipgloss.NewStyle().Height(internalHeight-1).Render(m.list.View()),
 		footer,
 	)
 

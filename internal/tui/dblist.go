@@ -134,7 +134,7 @@ func (m DBListModel) View() string {
 	})
 
 	return lipgloss.JoinVertical(lipgloss.Left,
-		m.list.View(),
+		lipgloss.NewStyle().Height(m.height-1).Render(m.list.View()),
 		footer,
 	)
 }
