@@ -15,10 +15,10 @@ type ConfirmNoMsg struct{}
 
 // ConfirmModel is a Yes/No confirmation dialog component.
 type ConfirmModel struct {
-	prompt  string
-	cursor  int // 0 = Yes, 1 = No
-	width   int
-	height  int
+	prompt string
+	cursor int // 0 = Yes, 1 = No
+	width  int
+	height int
 }
 
 // NewConfirmModel creates a new ConfirmModel with the given prompt.
@@ -70,7 +70,7 @@ func (m ConfirmModel) View() string {
 
 	promptStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(accentTextColor).
+		Foreground(accentColor).
 		Padding(1, 2)
 
 	yesStyle := lipgloss.NewStyle().Padding(0, 2)

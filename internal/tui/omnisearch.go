@@ -233,7 +233,7 @@ func (m OmnisearchModel) View() string {
 	searchBar := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder(), false, false, true, false).
 		BorderForeground(lipgloss.Color(ActiveTheme.Border)).
-		Width(popupWidth - 4).
+		Width(popupWidth-4).
 		Padding(0, 1).
 		Render(m.input.View())
 

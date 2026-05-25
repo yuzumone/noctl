@@ -26,6 +26,7 @@ const (
 	modeCreate
 	modeEdit
 )
+
 // EditorModel is a Bubble Tea model for viewing and editing Notion pages.
 type EditorModel struct {
 	viewport     viewport.Model

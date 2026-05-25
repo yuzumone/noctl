@@ -14,6 +14,9 @@ func TestConfigLoad(t *testing.T) {
 	configContent := `
 notion_token: secret_test_token
 default_database_id: test_db_id
+calendar_database_ids:
+  - id1
+  - id2
 theme:
   accent: "#7D56F4"
   select_bg: "#5F00FF"
@@ -47,6 +50,9 @@ theme:
 	}
 	if cfg.DefaultDatabaseID != "test_db_id" {
 		t.Errorf("expected DefaultDatabaseID test_db_id, got %s", cfg.DefaultDatabaseID)
+	}
+	if len(cfg.CalendarDatabaseIDs) != 2 || cfg.CalendarDatabaseIDs[0] != "id1" || cfg.CalendarDatabaseIDs[1] != "id2" {
+		t.Errorf("expected CalendarDatabaseIDs [id1 id2], got %v", cfg.CalendarDatabaseIDs)
 	}
 	if cfg.Theme.Accent != "#7D56F4" {
 		t.Errorf("expected Theme.Accent #7D56F4, got %s", cfg.Theme.Accent)

@@ -33,7 +33,7 @@ Example config file (~/.config/noctl/config.yaml):
 `
 
 func main() {
-	var initialState tui.SessionState = tui.ViewDBList
+	var initialState = tui.ViewDBList
 
 	if len(os.Args) > 1 {
 		switch os.Args[1] {

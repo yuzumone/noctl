@@ -38,7 +38,6 @@ func NewCalendarModel(client *notion.Client) CalendarModel {
 	}
 }
 
-
 func (m CalendarModel) Init() tea.Cmd {
 	return nil
 }
@@ -181,7 +180,7 @@ func (m CalendarModel) renderCalendar() string {
 	if availableHeight < 0 {
 		availableHeight = 0
 	}
-	
+
 	firstDayOfMonth := time.Date(m.currentDate.Year(), m.currentDate.Month(), 1, 0, 0, 0, 0, m.currentDate.Location())
 	startOffset := int(firstDayOfMonth.Weekday())
 	daysInMonth := time.Date(m.currentDate.Year(), m.currentDate.Month()+1, 0, 0, 0, 0, 0, m.currentDate.Location()).Day()
@@ -200,7 +199,7 @@ func (m CalendarModel) renderCalendar() string {
 	// Month and Year
 	monthYear := m.currentDate.Format("January 2006")
 	monthYearStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(ActiveTheme.Accent)).MarginBottom(0) // Reduced margin
-	
+
 	s := monthYearStyle.Render(monthYear) + "\n"
 
 	// Days of week
@@ -244,7 +243,7 @@ func (m CalendarModel) renderCalendar() string {
 		}
 
 		content := fmt.Sprintf("%d", day)
-		style := cellStyle.Copy()
+		style := cellStyle
 
 		// Today highlight (dimmed accent or bold)
 		if isTodayMonth && day == today.Day() {

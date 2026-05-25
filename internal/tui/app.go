@@ -373,11 +373,11 @@ func (m *AppModel) View() string {
 // renderWithPopup overlays a popup on top of a background string.
 func (m *AppModel) renderWithPopup(background, popup string) string {
 	bgLines := strings.Split(background, "\n")
-	
+
 	// Create centered popup string of the same size as background
 	popupCentered := lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, popup)
 	pcLines := strings.Split(popupCentered, "\n")
-	
+
 	finalLines := make([]string, len(bgLines))
 	for i := 0; i < len(bgLines); i++ {
 		// Use the background line as base
@@ -388,7 +388,7 @@ func (m *AppModel) renderWithPopup(background, popup string) string {
 		}
 
 		pcLine := pcLines[i]
-		
+
 		// If pcLine is just spaces, it's transparency, so use bgLine
 		// We use Width to handle ANSI codes correctly
 		if strings.TrimSpace(pcLine) == "" {
@@ -398,6 +398,6 @@ func (m *AppModel) renderWithPopup(background, popup string) string {
 			finalLines[i] = pcLine
 		}
 	}
-	
+
 	return strings.Join(finalLines, "\n")
 }

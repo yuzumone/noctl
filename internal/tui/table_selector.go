@@ -93,7 +93,7 @@ func (m *TableSelectorModel) updateTableSize() {
 
 	m.table.SetWidth(popupWidth - 4)
 	m.table.SetHeight(popupHeight - 8)
-	
+
 	if len(m.pages) > 0 {
 		m.renderPages()
 	}
@@ -202,7 +202,7 @@ func (m TableSelectorModel) View() string {
 		popupHeight = m.height
 	}
 
-	header := TitleStyle.Width(popupWidth - 2).Padding(0, 1).Render(m.title)
+	header := TitleStyle.Width(popupWidth-2).Padding(0, 1).Render(m.title)
 	footer := renderFooter(popupWidth-2, []keyHelp{
 		{"Enter", "Detail"},
 		{"Esc", "Back"},
