@@ -249,6 +249,11 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pushState(ViewCalendarDetails)
 		return m, nil
 
+	case OpenSelectorMsg:
+		m.selector.SetOptions(msg.PropName, msg.IsMulti, msg.Options, msg.CurrentValues)
+		m.pushState(ViewSelector)
+		return m, nil
+
 	case SelectorDoneMsg:
 		if m.state == ViewCalendarDetails {
 			m.popState()

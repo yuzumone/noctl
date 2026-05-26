@@ -65,7 +65,7 @@ func NewOmnisearchModel(client *notion.Client) OmnisearchModel {
 		UnsetBackground().
 		BorderLeftForeground(lipgloss.Color(ActiveTheme.Border))
 	delegate.Styles.NormalTitle = delegate.Styles.NormalTitle.
-		Foreground(lipgloss.Color(ActiveTheme.TitleFg))
+		Bold(false)
 	delegate.Styles.NormalDesc = delegate.Styles.NormalDesc.
 		Foreground(lipgloss.Color(ActiveTheme.Dimmed))
 
@@ -131,6 +131,10 @@ func (m OmnisearchModel) Update(msg tea.Msg) (OmnisearchModel, tea.Cmd) {
 					}
 					return SelectPageMsg{Page: p}
 				}
+			}
+		case "ctrl+o":
+			if i, ok := m.list.SelectedItem().(searchItem); ok {
+				_ = openBrowser(i.url)
 			}
 		case "up", "down":
 			m.list, cmd = m.list.Update(msg)
@@ -227,6 +231,7 @@ func (m OmnisearchModel) View() string {
 
 	footer := renderFooter(popupWidth-2, []keyHelp{
 		{"Enter", "Select"},
+		{"Ctrl+o", "Browser"},
 		{"Esc", "Cancel"},
 	})
 

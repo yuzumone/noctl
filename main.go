@@ -7,51 +7,46 @@ import (
 
 	"noctl/internal/config"
 	"noctl/internal/tui"
+	"noctl/internal/version"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spf13/cobra"
 )
 
-const usage = `noctl - A terminal UI tool for browsing Notion databases.
+var rootCmd = &cobra.Command{
+	Use:   "noctl",
+	Short: "A terminal UI tool for browsing Notion databases",
+	Long: `noctl is a fast, keyboard-driven terminal user interface for 
+browsing and editing Notion databases.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		runApp(tui.ViewDBList)
+	},
+}
 
-Usage:
-  noctl [command] [options]
+var calendarCmd = &cobra.Command{
+	Use:   "calendar",
+	Aliases: []string{"c"},
+	Short: "Open the monthly calendar view for configured databases",
+	Run: func(cmd *cobra.Command, args []string) {
+		runApp(tui.ViewCalendar)
+	},
+}
 
-Commands:
-  calendar      Open the monthly calendar view for configured databases
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Aliases: []string{"v"},
+	Short: "Print the version number of noctl",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("noctl %s\n", version.Get())
+	},
+}
 
-Options:
-  -h, --help    Show this help message
+func init() {
+	rootCmd.AddCommand(calendarCmd)
+	rootCmd.AddCommand(versionCmd)
+}
 
-Configuration:
-  noctl looks for a Notion token in:
-  1. Environment variable: NOCTL_NOTION_TOKEN
-  2. Config file: ~/.config/noctl/config.yaml
-  3. Config file: ~/.noctl.yaml
-
-Example config file (~/.config/noctl/config.yaml):
-  notion_token: secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-`
-
-func main() {
-	var initialState = tui.ViewDBList
-
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "--help", "-h":
-			fmt.Print(usage)
-			return
-		case "calendar":
-			if len(os.Args) > 2 {
-				switch os.Args[2] {
-				case "--help", "-h":
-					fmt.Print(usage)
-					return
-				}
-			}
-			initialState = tui.ViewCalendar
-		}
-	}
-
+func runApp(initialState tui.SessionState) {
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
@@ -61,13 +56,16 @@ func main() {
 	app := tui.NewAppModel(cfg)
 	app.SetInitialState(initialState)
 
-	runProgram(app)
-}
-
-func runProgram(app *tui.AppModel) {
 	p := tea.NewProgram(app, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error running program: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func main() {
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
