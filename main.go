@@ -24,18 +24,18 @@ browsing and editing Notion databases.`,
 }
 
 var calendarCmd = &cobra.Command{
-	Use:   "calendar",
+	Use:     "calendar",
 	Aliases: []string{"c"},
-	Short: "Open the monthly calendar view for configured databases",
+	Short:   "Open the monthly calendar view for configured databases",
 	Run: func(cmd *cobra.Command, args []string) {
 		runApp(tui.ViewCalendar)
 	},
 }
 
 var versionCmd = &cobra.Command{
-	Use:   "version",
+	Use:     "version",
 	Aliases: []string{"v"},
-	Short: "Print the version number of noctl",
+	Short:   "Print the version number of noctl",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("noctl %s\n", version.Get())
 	},
