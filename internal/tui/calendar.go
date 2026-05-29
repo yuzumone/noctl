@@ -66,11 +66,6 @@ type SwitchToTableMsg struct {
 	Title string
 }
 
-type SwitchToCalendarMsg struct {
-	ID    string
-	Title string
-}
-
 func (m CalendarModel) getPagesByDay(targetMonth time.Time) map[int][]notionapi.Page {
 	pagesByDay := make(map[int][]notionapi.Page)
 	for _, page := range m.allPages {
@@ -153,7 +148,6 @@ func (m CalendarModel) View() string {
 	calendar := m.renderCalendar()
 
 	footer := renderFooter(m.width, []keyHelp{
-		{"hjkl/arrows", "Move"},
 		{"H/L", "Prev/Next Month"},
 		{"o", "Omnisearch"},
 		{"Esc", "Back"},
