@@ -22,6 +22,7 @@ type CalendarModel struct {
 	err          error
 	width        int
 	height       int
+	lastKey      string
 }
 
 type OpenCalendarDetailsMsg struct {
@@ -42,10 +43,17 @@ func (m CalendarModel) Init() tea.Cmd {
 	return nil
 }
 
-func (m *CalendarModel) SetDatabases(ids []string) tea.Cmd {
+func (m *CalendarModel) SetDatabases(ids []string, cache []notionapi.Page) tea.Cmd {
 	m.dbIDs = ids
 	m.loading = true
 	m.allPages = nil
+
+	if len(cache) > 0 {
+		m.loading = false
+		m.allPages = cache
+		return nil
+	}
+
 	return m.fetchAllRecords
 }
 
@@ -88,7 +96,12 @@ func (m CalendarModel) getPagesByDay(targetMonth time.Time) map[int][]notionapi.
 func (m CalendarModel) Update(msg tea.Msg) (CalendarModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
+		k := msg.String()
+		if k != "z" {
+			m.lastKey = ""
+		}
+
+		switch k {
 		case "right", "l":
 			m.selectedDate = m.selectedDate.AddDate(0, 0, 1)
 			m.currentDate = m.selectedDate
@@ -107,6 +120,15 @@ func (m CalendarModel) Update(msg tea.Msg) (CalendarModel, tea.Cmd) {
 		case "H":
 			m.selectedDate = m.selectedDate.AddDate(0, -1, 0)
 			m.currentDate = m.selectedDate
+		case "z":
+			if m.lastKey == "z" {
+				now := time.Now()
+				m.selectedDate = now
+				m.currentDate = now
+				m.lastKey = ""
+			} else {
+				m.lastKey = "z"
+			}
 		case "enter":
 			pagesByDay := m.getPagesByDay(m.selectedDate)
 			if pages, ok := pagesByDay[m.selectedDate.Day()]; ok && len(pages) > 0 {
@@ -140,7 +162,11 @@ func (m CalendarModel) View() string {
 		return ErrorStyle.Render(fmt.Sprintf("Calendar View Error: %v", m.err))
 	}
 
-	header := TitleStyle.Width(m.width).Padding(0, 1).Render("Calendar") + "\n\n"
+	title := "Calendar"
+	if m.lastKey == "z" {
+		title += " (z...)"
+	}
+	header := TitleStyle.Width(m.width).Padding(0, 1).Render(title) + "\n\n"
 	if m.loading {
 		header += "Loading records from all databases...\n"
 	}
@@ -149,7 +175,9 @@ func (m CalendarModel) View() string {
 
 	footer := renderFooter(m.width, []keyHelp{
 		{"H/L", "Prev/Next Month"},
+		{"zz", "Today"},
 		{"o", "Omnisearch"},
+		{"r", "Refresh"},
 		{"Esc", "Back"},
 		{"q", "Quit"},
 	})

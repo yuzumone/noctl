@@ -81,7 +81,7 @@ func (m RecordsModel) Init() tea.Cmd {
 }
 
 // SetDatabase sets the database for the records view and triggers fetching of all pages.
-func (m *RecordsModel) SetDatabase(id string, name string) tea.Cmd {
+func (m *RecordsModel) SetDatabase(id string, name string, cache []notionapi.Page) tea.Cmd {
 	m.dbID = id
 	m.dbName = name
 	m.loading = true
@@ -89,6 +89,15 @@ func (m *RecordsModel) SetDatabase(id string, name string) tea.Cmd {
 	m.pages = nil
 	m.filterInput.SetValue("")
 	m.table.SetRows([]table.Row{})
+
+	if len(cache) > 0 {
+		m.loading = false
+		m.allPages = cache
+		m.updateTable()
+		m.table.SetCursor(0)
+		return nil
+	}
+
 	m.table.SetColumns([]table.Column{{Title: "Loading all records...", Width: m.width}})
 	return m.fetchAllRecords
 }
@@ -320,6 +329,7 @@ func (m RecordsModel) View() string {
 		{"b", "Open"},
 		{"o", "Omnisearch"},
 		{"a", "New"},
+		{"r", "Refresh"},
 		{"/", "Filter"},
 		{"Enter", "Detail"},
 		{"e", "Edit"},

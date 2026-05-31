@@ -43,6 +43,9 @@ type AppModel struct {
 	tableSelector TableSelectorModel
 	confirm       ConfirmModel
 
+	dbCache      []notionapi.Database
+	recordsCache map[string][]notionapi.Page // Key: Database ID
+
 	width  int
 	height int
 	err    error
@@ -70,6 +73,7 @@ func NewAppModel(cfg *config.Config) *AppModel {
 		selector:      NewSelectorModel(),
 		tableSelector: NewTableSelectorModel(),
 		confirm:       NewConfirmModel("Quit noctl?"),
+		recordsCache:  make(map[string][]notionapi.Page),
 	}
 }
 
@@ -115,9 +119,17 @@ func (m *AppModel) isInInputMode() bool {
 // Init initializes the application.
 func (m *AppModel) Init() tea.Cmd {
 	if m.state == ViewCalendar {
-		return m.calendar.SetDatabases(m.config.CalendarDatabaseIDs)
+		return m.calendar.SetDatabases(m.config.CalendarDatabaseIDs, m.getAllCachedRecords())
 	}
-	return m.dbList.Init()
+	return m.dbList.FetchDatabases(m.dbCache)
+}
+
+func (m *AppModel) getAllCachedRecords() []notionapi.Page {
+	var all []notionapi.Page
+	for _, pages := range m.recordsCache {
+		all = append(all, pages...)
+	}
+	return all
 }
 
 // Update handles messages and updates the AppModel.
@@ -127,15 +139,14 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
+		k := msg.String()
+		switch k {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "q":
-			// Don't intercept q when typing
 			if m.isInInputMode() {
 				break
 			}
-			// Don't stack confirm on top of confirm
 			if m.state == ViewConfirm {
 				break
 			}
@@ -146,7 +157,6 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case "o":
 			if m.state != ViewOmnisearch {
-				// Don't trigger if we are filtering in DB list or Records view
 				if m.state == ViewDBList && m.dbList.list.FilterState() == list.Filtering {
 					break
 				}
@@ -160,23 +170,37 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.omnisearch.input.Focus()
 				return m, nil
 			}
-		case "esc", "h":
-			// Don't trigger back on 'h' if we are in an input mode or specific views that use 'h'
-			if msg.String() == "h" {
-				if m.state == ViewOmnisearch || m.state == ViewConfirm || m.state == ViewCalendarDetails {
-					break // Let it fall through to delegation
-				}
-				if m.state == ViewEditor && (m.editor.mode == modeCreate || m.editor.mode == modeEdit) {
-					break // Let it fall through to delegation
-				}
+		case "h":
+			// Delegate 'h' to sub-models that use it for navigation
+			if m.state == ViewCalendar || m.isInInputMode() {
+				break
 			}
-
-			// Handle 'back' action
-			if msg.String() == "esc" || msg.String() == "h" {
-				if len(m.history) > 0 {
-					m.popState()
-					return m, nil
+			if len(m.history) > 0 {
+				m.popState()
+				return m, nil
+			}
+		case "esc":
+			if len(m.history) > 0 {
+				m.popState()
+				return m, nil
+			}
+		case "r":
+			if m.isInInputMode() {
+				break
+			}
+			switch m.state {
+			case ViewDBList:
+				m.dbCache = nil
+				return m, m.dbList.FetchDatabases(nil)
+			case ViewRecords:
+				delete(m.recordsCache, m.records.dbID)
+				return m, m.records.SetDatabase(m.records.dbID, m.records.dbName, nil)
+			case ViewCalendar:
+				// Clear all record caches for calendar databases to be sure
+				for _, id := range m.config.CalendarDatabaseIDs {
+					delete(m.recordsCache, id)
 				}
+				return m, m.calendar.SetDatabases(m.config.CalendarDatabaseIDs, nil)
 			}
 		}
 
@@ -199,9 +223,23 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tableSelector, _ = m.tableSelector.Update(msg)
 		m.confirm, _ = m.confirm.Update(msg)
 
+	case databasesMsg:
+		m.dbCache = msg
+
+	case recordsMsg:
+		switch m.state {
+		case ViewRecords:
+			m.recordsCache[m.records.dbID] = msg
+		case ViewCalendar:
+			// For calendar, we don't know which DB each page belongs to easily from the slice,
+			// but fetchAllRecords in CalendarModel fetches for ALL configured databases.
+			// It's safer to just let it manage its own allPages or update individual caches.
+			// For simplicity, if we are in calendar, we don't update the per-DB cache here.
+		}
+
 	case SelectDBMsg:
 		m.pushState(ViewRecords)
-		return m, m.records.SetDatabase(msg.ID, msg.Title)
+		return m, m.records.SetDatabase(msg.ID, msg.Title, m.recordsCache[msg.ID])
 
 	case SelectPageMsg:
 		m.pushState(ViewEditor)
@@ -229,7 +267,13 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if dbID == "" && page != nil {
 			dbID = string(page.Parent.DatabaseID)
 		}
-		return m, m.records.SetDatabase(dbID, dbName)
+
+		// Invalidate cache for this database
+		if dbID != "" {
+			delete(m.recordsCache, dbID)
+		}
+
+		return m, m.records.SetDatabase(dbID, dbName, m.recordsCache[dbID])
 
 	case CancelEditMsg:
 		if m.editor.page == nil {

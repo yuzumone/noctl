@@ -52,6 +52,15 @@ func NewDBListModel(client *notion.Client) DBListModel {
 }
 
 func (m DBListModel) Init() tea.Cmd {
+	return nil // Initialization handled by AppModel
+}
+
+func (m DBListModel) FetchDatabases(cache []notionapi.Database) tea.Cmd {
+	if len(cache) > 0 {
+		return func() tea.Msg {
+			return databasesMsg(cache)
+		}
+	}
 	return m.fetchDatabases
 }
 
@@ -128,6 +137,7 @@ func (m DBListModel) View() string {
 	footer := renderFooter(m.width, []keyHelp{
 		{"Enter", "Select"},
 		{"o", "Omnisearch"},
+		{"r", "Refresh"},
 		{"b", "Open"},
 		{"/", "Filter"},
 		{"q", "Quit"},

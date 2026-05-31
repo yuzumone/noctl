@@ -455,11 +455,7 @@ func (c *Client) UpdatePageContent(ctx context.Context, pageID string, markdown 
 
 				// Handle extra blocks in this chunk
 				for i := 1; i < len(parsedBlocks); i++ {
-					req := &notionapi.AppendBlockChildrenRequest{
-						Children: []notionapi.Block{parsedBlocks[i]},
-						After:    notionapi.BlockID(lastID),
-					}
-					res, err := c.Block.AppendChildren(ctx, notionapi.BlockID(pageID), req)
+					res, err := c.AppendChildren(ctx, pageID, []notionapi.Block{parsedBlocks[i]}, lastID)
 					if err == nil && len(res.Results) > 0 {
 						lastID = string(res.Results[0].GetID())
 					}
@@ -468,13 +464,7 @@ func (c *Client) UpdatePageContent(ctx context.Context, pageID string, markdown 
 		} else {
 			// New content: Append all parsed blocks
 			for _, b := range parsedBlocks {
-				req := &notionapi.AppendBlockChildrenRequest{
-					Children: []notionapi.Block{b},
-				}
-				if lastID != "" {
-					req.After = notionapi.BlockID(lastID)
-				}
-				res, err := c.Block.AppendChildren(ctx, notionapi.BlockID(pageID), req)
+				res, err := c.AppendChildren(ctx, pageID, []notionapi.Block{b}, lastID)
 				if err == nil && len(res.Results) > 0 {
 					lastID = string(res.Results[0].GetID())
 				}

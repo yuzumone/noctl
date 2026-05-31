@@ -43,9 +43,9 @@ func (m ConfirmModel) Update(msg tea.Msg) (ConfirmModel, tea.Cmd) {
 			return m, func() tea.Msg { return ConfirmYesMsg{} }
 		case "n", "N", "esc":
 			return m, func() tea.Msg { return ConfirmNoMsg{} }
-		case "left", "h", "shift+tab":
+		case "left", "shift+tab":
 			m.cursor = 0
-		case "right", "l", "tab":
+		case "right", "tab":
 			m.cursor = 1
 		case "enter":
 			if m.cursor == 0 {
@@ -96,7 +96,7 @@ func (m ConfirmModel) View() string {
 	hint := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(ActiveTheme.Dimmed)).
 		Padding(0, 2).
-		Render("y/n · h/l or ←/→ to move · Enter to confirm")
+		Render("y/n · ←/→ or Tab to move · Enter to confirm")
 
 	inner := lipgloss.JoinVertical(lipgloss.Center,
 		promptStyle.Render(m.prompt),
