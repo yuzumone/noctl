@@ -174,108 +174,25 @@ func (m *EditorModel) SetEditMode(page *notionapi.Page) tea.Cmd {
 }
 
 func (m *EditorModel) initCreateInputs(db *notionapi.Database) {
-	m.loading = false
-	m.propKeys = []string{}
-	m.propConfigs = db.Properties
-
-	// Find title property first
-	titleKey := ""
-	for k, p := range db.Properties {
-		if p.GetType() == notionapi.PropertyConfigTypeTitle {
-			titleKey = k
-			break
-		}
-	}
-
-	if titleKey != "" {
-		m.propKeys = append(m.propKeys, titleKey)
-	}
-
-	var otherKeys []string
-	for k, p := range db.Properties {
-		if k == titleKey {
-			continue
-		}
-		// Support simple and selection types
-		switch p.GetType() {
-		case notionapi.PropertyConfigTypeRichText,
-			notionapi.PropertyConfigTypeNumber,
-			notionapi.PropertyConfigTypeURL,
-			notionapi.PropertyConfigTypeEmail,
-			notionapi.PropertyConfigTypePhoneNumber,
-			notionapi.PropertyConfigTypeSelect,
-			notionapi.PropertyConfigTypeMultiSelect:
-			otherKeys = append(otherKeys, k)
-		}
-	}
-	sort.Strings(otherKeys)
-	m.propKeys = append(m.propKeys, otherKeys...)
-
-	for _, k := range m.propKeys {
-		ti := textinput.New()
-		ti.Placeholder = k
-		config := m.propConfigs[k]
-		if config.GetType() == notionapi.PropertyConfigTypeSelect || config.GetType() == notionapi.PropertyConfigTypeMultiSelect {
-			ti.Placeholder = k + " (Tab to select)"
-			ti.Prompt = "󰦪 "
-		}
-		m.inputs = append(m.inputs, ti)
-	}
-
-	if len(m.inputs) > 0 {
-		m.inputs[0].Focus()
-	}
+	m.initPropertyInputs(db, nil)
 }
 
 func (m *EditorModel) initEditInputs(db *notionapi.Database) {
+	m.initPropertyInputs(db, m.page)
+}
+
+func (m *EditorModel) initPropertyInputs(db *notionapi.Database, page *notionapi.Page) {
 	m.loading = false
 	m.propKeys = []string{}
 	m.propConfigs = db.Properties
+	m.inputs = nil
 
-	// Find title property first
-	titleKey := ""
-	for k, p := range db.Properties {
-		if p.GetType() == notionapi.PropertyConfigTypeTitle {
-			titleKey = k
-			break
-		}
-	}
-
-	if titleKey != "" {
-		m.propKeys = append(m.propKeys, titleKey)
-	}
-
-	var otherKeys []string
-	for k, p := range db.Properties {
-		if k == titleKey {
-			continue
-		}
-		// Support simple and selection types
-		switch p.GetType() {
-		case notionapi.PropertyConfigTypeRichText,
-			notionapi.PropertyConfigTypeNumber,
-			notionapi.PropertyConfigTypeURL,
-			notionapi.PropertyConfigTypeEmail,
-			notionapi.PropertyConfigTypePhoneNumber,
-			notionapi.PropertyConfigTypeSelect,
-			notionapi.PropertyConfigTypeMultiSelect:
-			otherKeys = append(otherKeys, k)
-		}
-	}
-	sort.Strings(otherKeys)
-	m.propKeys = append(m.propKeys, otherKeys...)
+	m.propKeys = editablePropertyKeys(db.Properties)
 
 	for _, k := range m.propKeys {
-		ti := textinput.New()
-		ti.Placeholder = k
-		config := m.propConfigs[k]
-		if config.GetType() == notionapi.PropertyConfigTypeSelect || config.GetType() == notionapi.PropertyConfigTypeMultiSelect {
-			ti.Placeholder = k + " (Tab to select)"
-			ti.Prompt = "󰦪 "
-		}
-		// Set current value
-		if m.page != nil {
-			if prop, ok := m.page.Properties[k]; ok {
+		ti := newPropertyInput(k, m.propConfigs[k])
+		if page != nil {
+			if prop, ok := page.Properties[k]; ok {
 				ti.SetValue(notion.PropertyToString(prop))
 			}
 		}
@@ -287,54 +204,59 @@ func (m *EditorModel) initEditInputs(db *notionapi.Database) {
 	}
 }
 
+func editablePropertyKeys(configs map[string]notionapi.PropertyConfig) []string {
+	titleKey := ""
+	for k, p := range configs {
+		if p.GetType() == notionapi.PropertyConfigTypeTitle {
+			titleKey = k
+			break
+		}
+	}
+
+	var keys []string
+	if titleKey != "" {
+		keys = append(keys, titleKey)
+	}
+
+	var otherKeys []string
+	for k, p := range configs {
+		if k == titleKey || !isEditableProperty(p) {
+			continue
+		}
+		otherKeys = append(otherKeys, k)
+	}
+	sort.Strings(otherKeys)
+
+	return append(keys, otherKeys...)
+}
+
+func isEditableProperty(config notionapi.PropertyConfig) bool {
+	switch config.GetType() {
+	case notionapi.PropertyConfigTypeRichText,
+		notionapi.PropertyConfigTypeNumber,
+		notionapi.PropertyConfigTypeURL,
+		notionapi.PropertyConfigTypeEmail,
+		notionapi.PropertyConfigTypePhoneNumber,
+		notionapi.PropertyConfigTypeSelect,
+		notionapi.PropertyConfigTypeMultiSelect:
+		return true
+	}
+	return false
+}
+
+func newPropertyInput(name string, config notionapi.PropertyConfig) textinput.Model {
+	ti := textinput.New()
+	ti.Placeholder = name
+	if config.GetType() == notionapi.PropertyConfigTypeSelect || config.GetType() == notionapi.PropertyConfigTypeMultiSelect {
+		ti.Placeholder = name + " (Tab to select)"
+		ti.Prompt = "󰦪 "
+	}
+	return ti
+}
+
 func (m EditorModel) createPage() tea.Cmd {
 	return func() tea.Msg {
-		props := notionapi.Properties{}
-		for i, k := range m.propKeys {
-			val := m.inputs[i].Value()
-			if val == "" {
-				continue
-			}
-
-			config := m.propConfigs[k]
-			switch config.GetType() {
-			case notionapi.PropertyConfigTypeTitle:
-				props[k] = notionapi.TitleProperty{
-					Title: []notionapi.RichText{{Text: &notionapi.Text{Content: val}}},
-				}
-			case notionapi.PropertyConfigTypeRichText:
-				props[k] = notionapi.RichTextProperty{
-					RichText: []notionapi.RichText{{Text: &notionapi.Text{Content: val}}},
-				}
-			case notionapi.PropertyConfigTypeNumber:
-				num, err := strconv.ParseFloat(val, 64)
-				if err == nil {
-					props[k] = notionapi.NumberProperty{Number: num}
-				}
-			case notionapi.PropertyConfigTypeURL:
-				props[k] = notionapi.URLProperty{URL: val}
-			case notionapi.PropertyConfigTypeEmail:
-				props[k] = notionapi.EmailProperty{Email: val}
-			case notionapi.PropertyConfigTypePhoneNumber:
-				props[k] = notionapi.PhoneNumberProperty{PhoneNumber: val}
-			case notionapi.PropertyConfigTypeSelect:
-				if strings.TrimSpace(val) != "" {
-					props[k] = notionapi.SelectProperty{
-						Select: notionapi.Option{Name: strings.TrimSpace(val)},
-					}
-				}
-			case notionapi.PropertyConfigTypeMultiSelect:
-				options := []notionapi.Option{}
-				for _, v := range strings.Split(val, ", ") {
-					if strings.TrimSpace(v) != "" {
-						options = append(options, notionapi.Option{Name: strings.TrimSpace(v)})
-					}
-				}
-				props[k] = notionapi.MultiSelectProperty{
-					MultiSelect: options,
-				}
-			}
-		}
+		props := m.inputProperties(true)
 
 		page, err := m.client.CreatePage(context.Background(), m.dbID, props)
 		if err != nil {
@@ -346,49 +268,7 @@ func (m EditorModel) createPage() tea.Cmd {
 
 func (m EditorModel) updatePage() tea.Cmd {
 	return func() tea.Msg {
-		props := notionapi.Properties{}
-		for i, k := range m.propKeys {
-			val := m.inputs[i].Value()
-
-			config := m.propConfigs[k]
-			switch config.GetType() {
-			case notionapi.PropertyConfigTypeTitle:
-				props[k] = notionapi.TitleProperty{
-					Title: []notionapi.RichText{{Text: &notionapi.Text{Content: val}}},
-				}
-			case notionapi.PropertyConfigTypeRichText:
-				props[k] = notionapi.RichTextProperty{
-					RichText: []notionapi.RichText{{Text: &notionapi.Text{Content: val}}},
-				}
-			case notionapi.PropertyConfigTypeNumber:
-				num, err := strconv.ParseFloat(val, 64)
-				if err == nil {
-					props[k] = notionapi.NumberProperty{Number: num}
-				}
-			case notionapi.PropertyConfigTypeURL:
-				props[k] = notionapi.URLProperty{URL: val}
-			case notionapi.PropertyConfigTypeEmail:
-				props[k] = notionapi.EmailProperty{Email: val}
-			case notionapi.PropertyConfigTypePhoneNumber:
-				props[k] = notionapi.PhoneNumberProperty{PhoneNumber: val}
-			case notionapi.PropertyConfigTypeSelect:
-				if strings.TrimSpace(val) != "" {
-					props[k] = notionapi.SelectProperty{
-						Select: notionapi.Option{Name: strings.TrimSpace(val)},
-					}
-				}
-			case notionapi.PropertyConfigTypeMultiSelect:
-				options := []notionapi.Option{}
-				for _, v := range strings.Split(val, ", ") {
-					if strings.TrimSpace(v) != "" {
-						options = append(options, notionapi.Option{Name: strings.TrimSpace(v)})
-					}
-				}
-				props[k] = notionapi.MultiSelectProperty{
-					MultiSelect: options,
-				}
-			}
-		}
+		props := m.inputProperties(false)
 
 		page, err := m.client.UpdatePage(context.Background(), string(m.page.ID), props)
 		if err != nil {
@@ -396,6 +276,66 @@ func (m EditorModel) updatePage() tea.Cmd {
 		}
 		return PageUpdatedMsg(page)
 	}
+}
+
+func (m EditorModel) inputProperties(skipEmpty bool) notionapi.Properties {
+	props := notionapi.Properties{}
+	for i, k := range m.propKeys {
+		val := m.inputs[i].Value()
+		if skipEmpty && val == "" {
+			continue
+		}
+
+		prop, ok := inputProperty(m.propConfigs[k], val)
+		if ok {
+			props[k] = prop
+		}
+	}
+	return props
+}
+
+func inputProperty(config notionapi.PropertyConfig, val string) (notionapi.Property, bool) {
+	switch config.GetType() {
+	case notionapi.PropertyConfigTypeTitle:
+		return notionapi.TitleProperty{
+			Title: []notionapi.RichText{{Text: &notionapi.Text{Content: val}}},
+		}, true
+	case notionapi.PropertyConfigTypeRichText:
+		return notionapi.RichTextProperty{
+			RichText: []notionapi.RichText{{Text: &notionapi.Text{Content: val}}},
+		}, true
+	case notionapi.PropertyConfigTypeNumber:
+		num, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return nil, false
+		}
+		return notionapi.NumberProperty{Number: num}, true
+	case notionapi.PropertyConfigTypeURL:
+		return notionapi.URLProperty{URL: val}, true
+	case notionapi.PropertyConfigTypeEmail:
+		return notionapi.EmailProperty{Email: val}, true
+	case notionapi.PropertyConfigTypePhoneNumber:
+		return notionapi.PhoneNumberProperty{PhoneNumber: val}, true
+	case notionapi.PropertyConfigTypeSelect:
+		val = strings.TrimSpace(val)
+		if val == "" {
+			return nil, false
+		}
+		return notionapi.SelectProperty{
+			Select: notionapi.Option{Name: val},
+		}, true
+	case notionapi.PropertyConfigTypeMultiSelect:
+		options := []notionapi.Option{}
+		for _, v := range strings.Split(val, ", ") {
+			if strings.TrimSpace(v) != "" {
+				options = append(options, notionapi.Option{Name: strings.TrimSpace(v)})
+			}
+		}
+		return notionapi.MultiSelectProperty{
+			MultiSelect: options,
+		}, true
+	}
+	return nil, false
 }
 
 func (m *EditorModel) updateContent() {

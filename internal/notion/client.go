@@ -15,40 +15,117 @@ import (
 // Client is a wrapper around notionapi.Client.
 type Client struct {
 	*notionapi.Client
-	token string
+	token      string
+	httpClient *http.Client
 }
 
 // retryTransport is a http.RoundTripper that retries on 429 and 5xx errors.
 type retryTransport struct {
-	base http.RoundTripper
+	base        http.RoundTripper
+	maxAttempts int
+	sleep       func(time.Duration)
 }
 
 func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	var resp *http.Response
 	var err error
 
-	for i := 0; i < 3; i++ {
+	attempts := t.maxAttempts
+	if attempts == 0 {
+		attempts = 3
+	}
+
+	for i := 0; i < attempts; i++ {
+		if i > 0 && req.Body != nil && req.Body != http.NoBody {
+			body, err := req.GetBody()
+			if err != nil {
+				return nil, err
+			}
+			req.Body = body
+		}
+
 		resp, err = t.base.RoundTrip(req)
 		if err != nil {
 			return nil, err
 		}
 
-		if resp.StatusCode == http.StatusTooManyRequests {
-			// Rate limited, wait and retry
-			time.Sleep(time.Duration(i+1) * time.Second)
-			continue
+		if !isRetryableStatus(resp.StatusCode) || i == attempts-1 || !canRetryRequest(req) {
+			return resp, nil
 		}
 
-		if resp.StatusCode >= 500 {
-			// Server error, wait and retry
-			time.Sleep(time.Duration(i+1) * 500 * time.Millisecond)
-			continue
-		}
-
-		return resp, nil
+		closeResponseBody(resp)
+		t.wait(retryDelay(resp.StatusCode, i))
 	}
 
 	return resp, err
+}
+
+func isRetryableStatus(status int) bool {
+	return status == http.StatusTooManyRequests || status >= 500
+}
+
+func canRetryRequest(req *http.Request) bool {
+	return req.Body == nil || req.Body == http.NoBody || req.GetBody != nil
+}
+
+func closeResponseBody(resp *http.Response) {
+	if resp == nil || resp.Body == nil {
+		return
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+}
+
+func retryDelay(status int, attempt int) time.Duration {
+	if status == http.StatusTooManyRequests {
+		return time.Duration(attempt+1) * time.Second
+	}
+	return time.Duration(attempt+1) * 500 * time.Millisecond
+}
+
+func (t *retryTransport) wait(delay time.Duration) {
+	if t.sleep != nil {
+		t.sleep(delay)
+		return
+	}
+	time.Sleep(delay)
+}
+
+func (c *Client) doNotionJSON(ctx context.Context, method string, path string, requestBody interface{}, responseBody interface{}, operation string) error {
+	jsonBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, "https://api.notion.com/v1"+path, bytes.NewReader(jsonBody))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Notion-Version", "2026-03-11")
+	req.Header.Set("Content-Type", "application/json")
+
+	httpClient := c.httpClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("%s failed with status %d: %s", operation, resp.StatusCode, string(b))
+	}
+
+	if responseBody == nil {
+		return nil
+	}
+	return json.NewDecoder(resp.Body).Decode(responseBody)
 }
 
 // GlobalSearch searches for pages and databases by title.
@@ -64,32 +141,6 @@ func (c *Client) GlobalSearch(ctx context.Context, query string, cursor notionap
 		body["start_cursor"] = cursor
 	}
 
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.notion.com/v1/search", bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Notion-Version", "2026-03-11")
-	req.Header.Set("Content-Type", "application/json")
-
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("search failed with status %d: %s", resp.StatusCode, string(b))
-	}
-
 	var rawSearchResp struct {
 		Object     notionapi.ObjectType `json:"object"`
 		Results    []json.RawMessage    `json:"results"`
@@ -97,7 +148,7 @@ func (c *Client) GlobalSearch(ctx context.Context, query string, cursor notionap
 		NextCursor notionapi.Cursor     `json:"next_cursor"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&rawSearchResp); err != nil {
+	if err := c.doNotionJSON(ctx, http.MethodPost, "/search", body, &rawSearchResp, "search"); err != nil {
 		return nil, err
 	}
 
@@ -108,7 +159,11 @@ func (c *Client) GlobalSearch(ctx context.Context, query string, cursor notionap
 			continue
 		}
 
-		objectType := obj["object"].(string)
+		objectType, ok := obj["object"].(string)
+		if !ok {
+			continue
+		}
+
 		switch objectType {
 		case "page":
 			var p notionapi.Page
@@ -171,35 +226,9 @@ func (c *Client) AppendChildren(ctx context.Context, parentID string, children [
 		}
 	}
 
-	jsonBody, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-
-	url := fmt.Sprintf("https://api.notion.com/v1/blocks/%s/children", parentID)
-	req, err := http.NewRequestWithContext(ctx, "PATCH", url, bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	req.Header.Set("Notion-Version", "2026-03-11")
-	req.Header.Set("Content-Type", "application/json")
-
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("append children failed with status %d: %s", resp.StatusCode, string(b))
-	}
-
 	var appendResp notionapi.AppendBlockChildrenResponse
-	if err := json.NewDecoder(resp.Body).Decode(&appendResp); err != nil {
+	path := fmt.Sprintf("/blocks/%s/children", parentID)
+	if err := c.doNotionJSON(ctx, http.MethodPatch, path, body, &appendResp, "append children"); err != nil {
 		return nil, err
 	}
 
@@ -221,7 +250,8 @@ func NewClient(token string) *Client {
 			notionapi.WithHTTPClient(httpClient),
 			notionapi.WithVersion("2026-03-11"),
 		),
-		token: token,
+		token:      token,
+		httpClient: httpClient,
 	}
 }
 
