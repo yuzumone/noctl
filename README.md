@@ -2,8 +2,6 @@
 
 `noctl` is a fast, keyboard-driven Terminal User Interface (TUI) tool for browsing and editing Notion databases. It's designed for efficiency, allowing you to manage your Notion data without leaving your terminal.
 
-![noctl Calendar](https://via.placeholder.com/800x400?text=noctl+Calendar+View+Placeholder)
-
 ## Features
 
 - 🚀 **High Speed**: Built with Go for maximum performance.
