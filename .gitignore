@@ -19,6 +19,7 @@ go.work
 
 # Project specific binary
 noctl
+dist
 
 # Configuration files (containing secrets)
 .noctl.yaml
