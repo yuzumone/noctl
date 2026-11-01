@@ -9,7 +9,7 @@ import (
 	"noctl/internal/tui"
 	"noctl/internal/version"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
 )
 
@@ -56,7 +56,7 @@ func runApp(initialState tui.SessionState) {
 	app := tui.NewAppModel(cfg)
 	app.SetInitialState(initialState)
 
-	p := tea.NewProgram(app, tea.WithAltScreen())
+	p := tea.NewProgram(app)
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error running program: %v\n", err)
 		os.Exit(1)

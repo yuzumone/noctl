@@ -7,10 +7,10 @@ import (
 
 	"noctl/internal/notion"
 
-	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/jomei/notionapi"
 )
 
@@ -53,28 +53,12 @@ func NewOmnisearchModel(client *notion.Client) OmnisearchModel {
 	ti.Placeholder = "Search pages and databases..."
 	ti.Focus()
 
-	delegate := list.NewDefaultDelegate()
-	// Customize delegate to be more minimal by unsetting backgrounds
-	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
-		Foreground(lipgloss.Color(ActiveTheme.SelectFg)).
-		UnsetBackground().
-		BorderLeftForeground(lipgloss.Color(ActiveTheme.Border)).
-		Bold(false)
-	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.
-		Foreground(lipgloss.Color(ActiveTheme.Dimmed)).
-		UnsetBackground().
-		BorderLeftForeground(lipgloss.Color(ActiveTheme.Border))
-	delegate.Styles.NormalTitle = delegate.Styles.NormalTitle.
-		Bold(false)
-	delegate.Styles.NormalDesc = delegate.Styles.NormalDesc.
-		Foreground(lipgloss.Color(ActiveTheme.Dimmed))
-
-	l := list.New([]list.Item{}, delegate, 0, 0)
+	l := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
+	setListTheme(&l, true, true, true)
 	l.SetShowTitle(false)
 	l.SetShowHelp(false)
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
-	l.Styles.NoItems = l.Styles.NoItems.Padding(1, 2)
 
 	return OmnisearchModel{
 		input:  ti,
@@ -101,17 +85,17 @@ func (m OmnisearchModel) Update(msg tea.Msg) (OmnisearchModel, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
-	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch keyMsg.String() {
 		case "ctrl+n":
-			msg = tea.KeyMsg{Type: tea.KeyDown}
+			msg = tea.KeyPressMsg{Code: tea.KeyDown}
 		case "ctrl+p":
-			msg = tea.KeyMsg{Type: tea.KeyUp}
+			msg = tea.KeyPressMsg{Code: tea.KeyUp}
 		}
 	}
 
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "esc":
 			return m, func() tea.Msg { return CancelOmnisearchMsg{} }

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/jomei/notionapi"
 )
 
@@ -63,25 +63,25 @@ func TestCalendarModel_Navigation(t *testing.T) {
 	m.currentDate = initialDate
 
 	// Test Move Right
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRight})
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 	if m.selectedDate.Day() != 11 {
 		t.Errorf("expected day 11 after right, got %d", m.selectedDate.Day())
 	}
 
 	// Test Move Left
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
 	if m.selectedDate.Day() != 10 {
 		t.Errorf("expected day 10 after left, got %d", m.selectedDate.Day())
 	}
 
 	// Test Move Down (1 week)
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	if m.selectedDate.Day() != 17 {
 		t.Errorf("expected day 17 after down, got %d", m.selectedDate.Day())
 	}
 
 	// Test Month Jump (L)
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("L")})
+	m, _ = m.Update(tea.KeyPressMsg{Code: 'L', Text: "L"})
 	if m.selectedDate.Month() != time.June {
 		t.Errorf("expected June after L, got %s", m.selectedDate.Month())
 	}

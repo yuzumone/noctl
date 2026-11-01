@@ -9,10 +9,10 @@ import (
 
 	"noctl/internal/notion"
 
-	"github.com/charmbracelet/bubbles/table"
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/table"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/jomei/notionapi"
 )
 
@@ -224,13 +224,13 @@ func (m RecordsModel) Update(msg tea.Msg) (RecordsModel, tea.Cmd) {
 
 	if m.filtering {
 		switch msg := msg.(type) {
-		case tea.KeyMsg:
+		case tea.KeyPressMsg:
 			switch msg.String() {
 			case "ctrl+n", "down":
-				m.table, cmd = m.table.Update(tea.KeyMsg{Type: tea.KeyDown})
+				m.table, cmd = m.table.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 				return m, cmd
 			case "ctrl+p", "up":
-				m.table, cmd = m.table.Update(tea.KeyMsg{Type: tea.KeyUp})
+				m.table, cmd = m.table.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 				return m, cmd
 			case "enter", "esc":
 				m.filtering = false
@@ -243,17 +243,17 @@ func (m RecordsModel) Update(msg tea.Msg) (RecordsModel, tea.Cmd) {
 		return m, cmd
 	}
 
-	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch keyMsg.String() {
 		case "ctrl+n":
-			msg = tea.KeyMsg{Type: tea.KeyDown}
+			msg = tea.KeyPressMsg{Code: tea.KeyDown}
 		case "ctrl+p":
-			msg = tea.KeyMsg{Type: tea.KeyUp}
+			msg = tea.KeyPressMsg{Code: tea.KeyUp}
 		}
 	}
 
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "b":
 			idx := m.table.Cursor()

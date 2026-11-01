@@ -7,8 +7,8 @@ import (
 
 	"noctl/internal/notion"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/jomei/notionapi"
 )
 
@@ -95,7 +95,7 @@ func (m CalendarModel) getPagesByDay(targetMonth time.Time) map[int][]notionapi.
 
 func (m CalendarModel) Update(msg tea.Msg) (CalendarModel, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		k := msg.String()
 		if k != "z" {
 			m.lastKey = ""

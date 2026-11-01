@@ -11,11 +11,11 @@ import (
 
 	"noctl/internal/notion"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/glamour/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/jomei/notionapi"
 )
 
@@ -47,6 +47,7 @@ type EditorModel struct {
 	loading      bool
 	width        int
 	height       int
+	isDark       bool
 }
 
 // NewEditorModel creates a new EditorModel.
@@ -54,6 +55,7 @@ func NewEditorModel(client *notion.Client) EditorModel {
 	return EditorModel{
 		client:     client,
 		titleCache: make(map[string]string),
+		isDark:     true,
 	}
 }
 
@@ -191,6 +193,7 @@ func (m *EditorModel) initPropertyInputs(db *notionapi.Database, page *notionapi
 
 	for _, k := range m.propKeys {
 		ti := newPropertyInput(k, m.propConfigs[k])
+		ti.SetStyles(textinput.DefaultStyles(m.isDark))
 		if page != nil {
 			if prop, ok := page.Properties[k]; ok {
 				ti.SetValue(notion.PropertyToString(prop))
@@ -402,8 +405,12 @@ func (m *EditorModel) updateContent() {
 	// Content Blocks
 	if len(m.blocks) > 0 {
 		md := notion.BlocksToMarkdown(m.blocks)
+		style := "light"
+		if m.isDark {
+			style = "dark"
+		}
 		renderer, err := glamour.NewTermRenderer(
-			glamour.WithAutoStyle(),
+			glamour.WithStandardStyle(style),
 			glamour.WithWordWrap(m.width-4),
 		)
 		if err == nil {
@@ -497,12 +504,12 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
-	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch keyMsg.String() {
 		case "ctrl+n":
-			msg = tea.KeyMsg{Type: tea.KeyDown}
+			msg = tea.KeyPressMsg{Code: tea.KeyDown}
 		case "ctrl+p":
-			msg = tea.KeyMsg{Type: tea.KeyUp}
+			msg = tea.KeyPressMsg{Code: tea.KeyUp}
 		}
 	}
 
@@ -533,7 +540,7 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 			}
 			return m, nil
 
-		case tea.KeyMsg:
+		case tea.KeyPressMsg:
 			switch msg.String() {
 			case "esc":
 				if m.mode == modeCreate || m.mode == modeEdit {
@@ -606,11 +613,11 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 				key := m.propKeys[i]
 				config := m.propConfigs[key]
 				if config.GetType() == notionapi.PropertyConfigTypeSelect || config.GetType() == notionapi.PropertyConfigTypeMultiSelect {
-					if km, ok := msg.(tea.KeyMsg); ok {
+					if km, ok := msg.(tea.KeyPressMsg); ok {
 						s := km.String()
 						// Block printable characters, backspace, and delete
 						// Allow navigation, tab, esc, ctrl+s
-						if len(s) == 1 || s == "backspace" || s == "delete" {
+						if km.Text != "" || len(s) == 1 || s == "space" || s == "backspace" || s == "delete" {
 							continue
 						}
 					}
@@ -645,7 +652,7 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 		m.updateContent()
 		return m, nil
 
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "b":
 			if m.page != nil {
@@ -662,11 +669,11 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 		m.height = msg.Height
 
 		if !m.ready {
-			m.viewport = viewport.New(msg.Width, msg.Height-1)
+			m.viewport = viewport.New(viewport.WithWidth(msg.Width), viewport.WithHeight(msg.Height-1))
 			m.ready = true
 		} else {
-			m.viewport.Width = msg.Width
-			m.viewport.Height = msg.Height - 1
+			m.viewport.SetWidth(msg.Width)
+			m.viewport.SetHeight(msg.Height - 1)
 		}
 		m.updateContent()
 	}

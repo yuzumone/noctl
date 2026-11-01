@@ -4,8 +4,35 @@ package tui
 import (
 	"noctl/internal/config"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/lipgloss/v2"
 )
+
+// setListTheme supplies the explicit terminal background required by Bubbles v2.
+func setListTheme(m *list.Model, isDark, showDescription, minimal bool) {
+	title := m.Styles.Title
+	m.Styles = list.DefaultStyles(isDark)
+	m.Styles.Title = title
+	m.FilterInput.SetStyles(textinput.DefaultStyles(isDark))
+	m.Paginator.ActiveDot = m.Styles.ActivePaginationDot.String()
+	m.Paginator.InactiveDot = m.Styles.InactivePaginationDot.String()
+	delegate := list.NewDefaultDelegate()
+	delegate.ShowDescription = showDescription
+	delegate.Styles = list.NewDefaultItemStyles(isDark)
+	if minimal {
+		delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
+			Foreground(lipgloss.Color(ActiveTheme.SelectFg)).UnsetBackground().
+			BorderLeftForeground(lipgloss.Color(ActiveTheme.Border)).Bold(false)
+		delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.
+			Foreground(lipgloss.Color(ActiveTheme.Dimmed)).UnsetBackground().
+			BorderLeftForeground(lipgloss.Color(ActiveTheme.Border))
+		delegate.Styles.NormalTitle = delegate.Styles.NormalTitle.Bold(false)
+		delegate.Styles.NormalDesc = delegate.Styles.NormalDesc.Foreground(lipgloss.Color(ActiveTheme.Dimmed))
+		m.Styles.NoItems = m.Styles.NoItems.Padding(1, 2)
+	}
+	m.SetDelegate(delegate)
+}
 
 // Theme defines the color configuration structure.
 type Theme struct {

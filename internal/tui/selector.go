@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 type selectorItem struct {
@@ -61,15 +61,8 @@ type SelectorOption struct {
 
 // NewSelectorModel creates a new SelectorModel.
 func NewSelectorModel() SelectorModel {
-	delegate := list.NewDefaultDelegate()
-	delegate.ShowDescription = false
-	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
-		Foreground(lipgloss.Color(ActiveTheme.SelectFg)).
-		UnsetBackground().
-		BorderLeftForeground(lipgloss.Color(ActiveTheme.Border)).
-		Bold(false)
-
-	l := list.New([]list.Item{}, delegate, 0, 0)
+	l := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
+	setListTheme(&l, true, false, true)
 	l.SetShowTitle(true)
 	l.Styles.Title = TitleStyle
 	l.SetShowHelp(false)
@@ -90,17 +83,17 @@ func (m SelectorModel) Init() tea.Cmd {
 func (m SelectorModel) Update(msg tea.Msg) (SelectorModel, tea.Cmd) {
 	var cmd tea.Cmd
 
-	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch keyMsg.String() {
 		case "ctrl+n":
-			msg = tea.KeyMsg{Type: tea.KeyDown}
+			msg = tea.KeyPressMsg{Code: tea.KeyDown}
 		case "ctrl+p":
-			msg = tea.KeyMsg{Type: tea.KeyUp}
+			msg = tea.KeyPressMsg{Code: tea.KeyUp}
 		}
 	}
 
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		if m.list.FilterState() == list.Filtering {
 			break
 		}
