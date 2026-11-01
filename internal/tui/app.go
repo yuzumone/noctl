@@ -8,9 +8,10 @@ import (
 	"noctl/internal/config"
 	"noctl/internal/notion"
 
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/list"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/jomei/notionapi"
 )
 
@@ -119,9 +120,9 @@ func (m *AppModel) isInInputMode() bool {
 // Init initializes the application.
 func (m *AppModel) Init() tea.Cmd {
 	if m.state == ViewCalendar {
-		return m.calendar.SetDatabases(m.config.CalendarDatabaseIDs, m.getAllCachedRecords())
+		return tea.Batch(tea.RequestBackgroundColor, m.calendar.SetDatabases(m.config.CalendarDatabaseIDs, m.getAllCachedRecords()))
 	}
-	return m.dbList.FetchDatabases(m.dbCache)
+	return tea.Batch(tea.RequestBackgroundColor, m.dbList.FetchDatabases(m.dbCache))
 }
 
 func (m *AppModel) getAllCachedRecords() []notionapi.Page {
@@ -138,7 +139,20 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.BackgroundColorMsg:
+		isDark := msg.IsDark()
+		setListTheme(&m.dbList.list, isDark, true, false)
+		setListTheme(&m.omnisearch.list, isDark, true, true)
+		setListTheme(&m.selector.list, isDark, false, true)
+		m.records.filterInput.SetStyles(textinput.DefaultStyles(isDark))
+		m.omnisearch.input.SetStyles(textinput.DefaultStyles(isDark))
+		m.editor.isDark = isDark
+		for i := range m.editor.inputs {
+			m.editor.inputs[i].SetStyles(textinput.DefaultStyles(isDark))
+		}
+		m.editor.updateContent()
+		return m, nil
+	case tea.KeyPressMsg:
 		k := msg.String()
 		switch k {
 		case "ctrl+c":
@@ -374,7 +388,13 @@ func (m *AppModel) backgroundView() string {
 }
 
 // View renders the application.
-func (m *AppModel) View() string {
+func (m *AppModel) View() tea.View {
+	view := tea.NewView(m.renderView())
+	view.AltScreen = true
+	return view
+}
+
+func (m *AppModel) renderView() string {
 	if m.err != nil {
 		return ErrorStyle.Render(fmt.Sprintf("Fatal Error: %v\n\nPress 'q' to quit.", m.err))
 	}
