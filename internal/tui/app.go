@@ -139,6 +139,10 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case markdownMsg, contentSavedMsg:
+		// Content belongs to the editor even while a popup or another view is open.
+		m.editor, cmd = m.editor.Update(msg)
+		return m, cmd
 	case tea.BackgroundColorMsg:
 		isDark := msg.IsDark()
 		setListTheme(&m.dbList.list, isDark, true, false)

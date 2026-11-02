@@ -89,6 +89,15 @@ theme:
 | `E` | Edit body content in external editor (`$EDITOR`) |
 | `Ctrl+s` | Save changes |
 
+Page bodies use Notion's official Markdown API with `markdown_version=v2`.
+The external editor receives the original Notion-flavored Markdown, including
+Notion-specific tags. Saving replaces the page body after checking that it has
+not changed since editing began. Child-page and database deletion protection
+remains enabled. Incomplete pages can be viewed but cannot be edited here.
+If saving fails or Notion reports warnings, the edited file is retained and its
+path is shown so the content can be recovered. Common tags are adapted for the
+terminal preview; complex Notion layouts may display differently.
+
 ## Development
 
 ### Running Tests
