@@ -255,10 +255,10 @@ func TestAppBackgroundColorUpdatesComponents(t *testing.T) {
 func TestRecordsControlNavigation(t *testing.T) {
 	m := NewRecordsModel(nil)
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
-	m, _ = m.Update(recordsMsg{
+	m, _ = m.Update(recordsMsg{pages: []notionapi.Page{
 		{ID: "first", Properties: notionapi.Properties{"Title": &notionapi.TitleProperty{Title: []notionapi.RichText{{PlainText: "First"}}}}},
 		{ID: "second", Properties: notionapi.Properties{"Title": &notionapi.TitleProperty{Title: []notionapi.RichText{{PlainText: "Second"}}}}},
-	})
+	}})
 	m, _ = m.Update(tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
 	if m.table.Cursor() != 1 {
 		t.Fatal("ctrl+n did not move down")

@@ -129,8 +129,12 @@ func (m *AppModel) Init() tea.Cmd {
 }
 
 func (m *AppModel) getAllCachedRecords() []notionapi.Page {
-	var all []notionapi.Page
-	for _, pages := range m.recordsCache {
+	all := make([]notionapi.Page, 0)
+	for _, id := range m.config.CalendarDatabaseIDs {
+		pages, ok := m.recordsCache[id]
+		if !ok {
+			return nil // A partial cache must not hide missing calendar databases.
+		}
 		all = append(all, pages...)
 	}
 	return all
@@ -243,15 +247,19 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.dbCache = msg
 
 	case recordsMsg:
-		switch m.state {
-		case ViewRecords:
-			m.recordsCache[m.records.dbID] = msg
-		case ViewCalendar:
-			// For calendar, we don't know which DB each page belongs to easily from the slice,
-			// but fetchAllRecords in CalendarModel fetches for ALL configured databases.
-			// It's safer to just let it manage its own allPages or update individual caches.
-			// For simplicity, if we are in calendar, we don't update the per-DB cache here.
+		if msg.dbID != m.records.dbID || msg.requestID != m.records.requestID {
+			return m, nil
 		}
+		if msg.err == nil {
+			// Preserve a cache hit for databases with no records too.
+			m.recordsCache[msg.dbID] = append([]notionapi.Page{}, msg.pages...)
+		}
+		m.records, cmd = m.records.Update(msg)
+		return m, cmd
+
+	case calendarRecordsMsg:
+		m.calendar, cmd = m.calendar.Update(msg)
+		return m, cmd
 
 	case SelectDBMsg:
 		m.pushState(ViewRecords)

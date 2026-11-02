@@ -23,6 +23,13 @@ type CalendarModel struct {
 	width        int
 	height       int
 	lastKey      string
+	requestID    uint64
+}
+
+type calendarRecordsMsg struct {
+	requestID uint64
+	pages     []notionapi.Page
+	err       error
 }
 
 type OpenCalendarDetailsMsg struct {
@@ -44,11 +51,13 @@ func (m CalendarModel) Init() tea.Cmd {
 }
 
 func (m *CalendarModel) SetDatabases(ids []string, cache []notionapi.Page) tea.Cmd {
-	m.dbIDs = ids
+	m.requestID++
+	m.dbIDs = append([]string(nil), ids...)
 	m.loading = true
 	m.allPages = nil
+	m.err = nil
 
-	if len(cache) > 0 {
+	if cache != nil {
 		m.loading = false
 		m.allPages = cache
 		return nil
@@ -62,11 +71,11 @@ func (m CalendarModel) fetchAllRecords() tea.Msg {
 	for _, id := range m.dbIDs {
 		pages, err := m.client.QueryDatabaseAll(context.Background(), id)
 		if err != nil {
-			return errMsg(fmt.Errorf("failed to fetch records for %s: %w", id, err))
+			return calendarRecordsMsg{requestID: m.requestID, err: fmt.Errorf("failed to fetch records for %s: %w", id, err)}
 		}
 		allPages = append(allPages, pages...)
 	}
-	return recordsMsg(allPages)
+	return calendarRecordsMsg{requestID: m.requestID, pages: allPages}
 }
 
 type SwitchToTableMsg struct {
@@ -145,13 +154,15 @@ func (m CalendarModel) Update(msg tea.Msg) (CalendarModel, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
-	case recordsMsg:
+	case calendarRecordsMsg:
+		if msg.requestID != m.requestID {
+			return m, nil
+		}
 		m.loading = false
-		m.allPages = msg
-
-	case errMsg:
-		m.err = msg
-		m.loading = false
+		m.err = msg.err
+		if msg.err == nil {
+			m.allPages = msg.pages
+		}
 	}
 
 	return m, nil
