@@ -114,6 +114,9 @@ func (m *AppModel) isInInputMode() bool {
 	if m.state == ViewRecords && m.records.filtering {
 		return true
 	}
+	if m.state == ViewSelector && m.selector.list.FilterState() == list.Filtering {
+		return true
+	}
 	return false
 }
 
@@ -158,13 +161,16 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyPressMsg:
 		k := msg.String()
-		switch k {
-		case "ctrl+c":
+		if k == "ctrl+c" {
 			return m, tea.Quit
+		}
+		// Text input owns its keys, including Escape; cancellation is handled
+		// through the child model's messages rather than bypassing its state.
+		if m.isInInputMode() {
+			break
+		}
+		switch k {
 		case "q":
-			if m.isInInputMode() {
-				break
-			}
 			if m.state == ViewConfirm {
 				break
 			}
@@ -174,23 +180,14 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pushState(ViewConfirm)
 			return m, nil
 		case "o":
-			if m.state != ViewOmnisearch {
-				if m.state == ViewDBList && m.dbList.list.FilterState() == list.Filtering {
-					break
-				}
-				if m.state == ViewRecords && m.records.filtering {
-					break
-				}
-
-				m.pushState(ViewOmnisearch)
-				m.omnisearch.input.SetValue("")
-				m.omnisearch.list.SetItems(nil)
-				m.omnisearch.input.Focus()
-				return m, nil
-			}
+			m.pushState(ViewOmnisearch)
+			m.omnisearch.input.SetValue("")
+			m.omnisearch.list.SetItems(nil)
+			m.omnisearch.input.Focus()
+			return m, nil
 		case "h":
 			// Delegate 'h' to sub-models that use it for navigation
-			if m.state == ViewCalendar || m.isInInputMode() {
+			if m.state == ViewCalendar {
 				break
 			}
 			if len(m.history) > 0 {
@@ -198,14 +195,15 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		case "esc":
+			if m.state == ViewSelector || m.state == ViewConfirm || m.state == ViewCalendarDetails ||
+				(m.state == ViewDBList && m.dbList.list.FilterState() != list.Unfiltered) {
+				break
+			}
 			if len(m.history) > 0 {
 				m.popState()
 				return m, nil
 			}
 		case "r":
-			if m.isInInputMode() {
-				break
-			}
 			switch m.state {
 			case ViewDBList:
 				m.dbCache = nil
@@ -294,7 +292,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.records.SetDatabase(dbID, dbName, m.recordsCache[dbID])
 
 	case CancelEditMsg:
-		if m.editor.page == nil {
+		if m.editor.mode == modeCreate || m.editor.page == nil {
 			m.popState()
 		} else {
 			m.editor.mode = modeView

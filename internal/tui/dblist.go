@@ -89,6 +89,9 @@ func (m DBListModel) Update(msg tea.Msg) (DBListModel, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
+		if m.list.FilterState() == list.Filtering {
+			break
+		}
 		switch msg.String() {
 		case "b":
 			if i, ok := m.list.SelectedItem().(dbItem); ok {
