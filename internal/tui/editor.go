@@ -596,11 +596,14 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 			return m, nil
 
 		case tea.KeyPressMsg:
+			if msg.String() == "esc" {
+				return m, func() tea.Msg { return CancelEditMsg{} }
+			}
+			// Loading includes saving: don't index missing fields or submit twice.
+			if m.loading || len(m.inputs) == 0 {
+				return m, nil
+			}
 			switch msg.String() {
-			case "esc":
-				if m.mode == modeCreate || m.mode == modeEdit {
-					return m, func() tea.Msg { return CancelEditMsg{} }
-				}
 			case "up":
 				m.inputs[m.focusedIdx].Blur()
 				m.focusedIdx--
