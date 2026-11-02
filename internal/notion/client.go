@@ -92,12 +92,16 @@ func (t *retryTransport) wait(delay time.Duration) {
 }
 
 func (c *Client) doNotionJSON(ctx context.Context, method string, path string, requestBody interface{}, responseBody interface{}, operation string) error {
-	jsonBody, err := json.Marshal(requestBody)
-	if err != nil {
-		return err
+	var body io.Reader
+	if requestBody != nil {
+		jsonBody, err := json.Marshal(requestBody)
+		if err != nil {
+			return err
+		}
+		body = bytes.NewReader(jsonBody)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, "https://api.notion.com/v1"+path, bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, method, "https://api.notion.com/v1"+path, body)
 	if err != nil {
 		return err
 	}
@@ -198,41 +202,6 @@ func (c *Client) GlobalSearch(ctx context.Context, query string, cursor notionap
 		HasMore:    rawSearchResp.HasMore,
 		NextCursor: rawSearchResp.NextCursor,
 	}, nil
-}
-
-// AppendChildren appends blocks to a parent block using the position object (required for 2026-03-11).
-func (c *Client) AppendChildren(ctx context.Context, parentID string, children []notionapi.Block, afterID string) (*notionapi.AppendBlockChildrenResponse, error) {
-	type position struct {
-		Type       string `json:"type"`
-		AfterBlock *struct {
-			ID string `json:"id"`
-		} `json:"after_block,omitempty"`
-	}
-
-	body := map[string]interface{}{
-		"children": children,
-	}
-
-	if afterID != "" {
-		body["position"] = position{
-			Type: "after_block",
-			AfterBlock: &struct {
-				ID string `json:"id"`
-			}{ID: afterID},
-		}
-	} else {
-		body["position"] = position{
-			Type: "end",
-		}
-	}
-
-	var appendResp notionapi.AppendBlockChildrenResponse
-	path := fmt.Sprintf("/blocks/%s/children", parentID)
-	if err := c.doNotionJSON(ctx, http.MethodPatch, path, body, &appendResp, "append children"); err != nil {
-		return nil, err
-	}
-
-	return &appendResp, nil
 }
 
 // NewClient creates a new Notion client with retry logic.

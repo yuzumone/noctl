@@ -37,8 +37,8 @@ type EditorModel struct {
 	client       *notion.Client
 	dbID         string
 	page         *notionapi.Page
-	blocks       []notionapi.Block
-	blocksLoaded bool
+	markdown     *notion.PageMarkdown
+	editOriginal string
 	titleCache   map[string]string // ID -> Title
 	focusedIdx   int
 	tempFile     string
@@ -59,7 +59,17 @@ func NewEditorModel(client *notion.Client) EditorModel {
 	}
 }
 
-type blocksMsg []notionapi.Block
+type markdownMsg struct {
+	pageID  string
+	content *notion.PageMarkdown
+	err     error
+}
+type contentSavedMsg struct {
+	pageID  string
+	content *notion.PageMarkdown
+	file    string
+	err     error
+}
 type relationTitlesMsg map[string]string
 type editorFinishedMsg struct{ err error }
 
@@ -79,10 +89,10 @@ type CancelEditMsg struct{}
 func (m *EditorModel) SetPage(page *notionapi.Page) tea.Cmd {
 	m.mode = modeView
 	m.page = page
-	m.blocks = nil
-	m.blocksLoaded = false
+	m.markdown = nil
+	m.err = nil
 	m.updateContent()
-	return tea.Batch(m.fetchBlocks, m.resolveRelationTitles)
+	return tea.Batch(m.fetchMarkdown(), m.resolveRelationTitles)
 }
 
 func (m *EditorModel) resolveRelationTitles() tea.Msg {
@@ -129,15 +139,12 @@ func (m *EditorModel) resolveRelationTitles() tea.Msg {
 	return relationTitlesMsg(newTitles)
 }
 
-func (m EditorModel) fetchBlocks() tea.Msg {
-	if m.page == nil {
-		return nil
+func (m EditorModel) fetchMarkdown() tea.Cmd {
+	pageID := string(m.page.ID)
+	return func() tea.Msg {
+		content, err := m.client.RetrievePageMarkdown(context.Background(), pageID)
+		return markdownMsg{pageID: pageID, content: content, err: err}
 	}
-	blocks, err := m.client.ListBlocksExpanded(context.Background(), string(m.page.ID))
-	if err != nil {
-		return errMsg(fmt.Errorf("failed to fetch page content: %w", err))
-	}
-	return blocksMsg(blocks)
 }
 
 func (m *EditorModel) SetCreateMode(dbID string) tea.Cmd {
@@ -402,9 +409,13 @@ func (m *EditorModel) updateContent() {
 		fmt.Fprintf(&content, "%s %s\n", label, value)
 	}
 
-	// Content Blocks
-	if len(m.blocks) > 0 {
-		md := notion.BlocksToMarkdown(m.blocks)
+	// Keep completeness visible; saving a partial document is disabled.
+	if m.markdown != nil && (m.markdown.Truncated || len(m.markdown.UnknownBlockIDs) > 0) {
+		content.WriteString("\n" + DimmedStyle.Render("Incomplete content (read only). Open in Notion to edit.") + "\n")
+	}
+	// Page body
+	if m.markdown != nil && m.markdown.Markdown != "" {
+		md := markdownForDisplay(m.markdown.Markdown)
 		style := "light"
 		if m.isDark {
 			style = "dark"
@@ -424,7 +435,7 @@ func (m *EditorModel) updateContent() {
 			content.WriteString("\n" + md)
 		}
 	} else if m.mode == modeView {
-		if m.blocksLoaded {
+		if m.markdown != nil {
 			content.WriteString("\n" + DimmedStyle.Render("(empty content)") + "\n")
 		} else {
 			content.WriteString("\n" + DimmedStyle.Render("Loading content...") + "\n")
@@ -439,7 +450,15 @@ func (m *EditorModel) openInEditor() tea.Cmd {
 		return nil
 	}
 
-	md := notion.BlocksToMarkdownExtended(m.blocks, true)
+	if m.markdown == nil || m.loading {
+		return nil
+	}
+	if m.markdown.Truncated || len(m.markdown.UnknownBlockIDs) > 0 {
+		m.err = fmt.Errorf("page content is incomplete; open it in Notion to edit")
+		return nil
+	}
+	md := m.markdown.Markdown
+	m.editOriginal = md
 
 	// Create temporary file
 	tmpFile, err := os.CreateTemp("", "noctl-*.md")
@@ -468,10 +487,10 @@ func (m *EditorModel) openInEditor() tea.Cmd {
 }
 
 func (m *EditorModel) handleEditorFinished(msg editorFinishedMsg) tea.Cmd {
-	defer func() { _ = os.Remove(m.tempFile) }()
-
 	if msg.err != nil {
-		return func() tea.Msg { return errMsg(fmt.Errorf("editor failed: %w", msg.err)) }
+		return func() tea.Msg {
+			return errMsg(fmt.Errorf("editor failed (file retained at %s): %w", m.tempFile, msg.err))
+		}
 	}
 
 	// Read back content
@@ -481,28 +500,64 @@ func (m *EditorModel) handleEditorFinished(msg editorFinishedMsg) tea.Cmd {
 	}
 	newMd := string(newMdBytes)
 
-	oldMd := notion.BlocksToMarkdown(m.blocks)
+	oldMd := m.editOriginal
 	if newMd == oldMd {
+		_ = os.Remove(m.tempFile)
 		return nil // No changes
 	}
 
 	m.loading = true
 	m.updateContent()
 
+	pageID, file, client := string(m.page.ID), m.tempFile, m.client
 	return func() tea.Msg {
-		err := m.client.UpdatePageContent(context.Background(), string(m.page.ID), newMd)
-		if err != nil {
-			return errMsg(fmt.Errorf("failed to update page content: %w", err))
-		}
-		// Refresh list and stay in editor?
-		// User wants list reload. AppModel's PageUpdatedMsg handler switches to list.
-		return PageUpdatedMsg(m.page)
+		saved, err := client.UpdatePageMarkdown(context.Background(), pageID, oldMd, newMd)
+		return contentSavedMsg{pageID: pageID, content: saved, file: file, err: err}
 	}
 }
 
 func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
+
+	switch event := msg.(type) {
+	case markdownMsg:
+		if m.page == nil || event.pageID != string(m.page.ID) {
+			return m, nil
+		}
+		if event.err != nil {
+			m.err = event.err
+			return m, nil
+		}
+		m.markdown = event.content
+		m.updateContent()
+		return m, nil
+	case contentSavedMsg:
+		if m.page == nil || event.pageID != string(m.page.ID) {
+			return m, nil
+		}
+		m.loading = false
+		if event.err != nil {
+			m.err = fmt.Errorf("save failed; edited file retained at %s: %w", event.file, event.err)
+			return m, nil
+		}
+		m.markdown = event.content
+		if len(event.content.Warnings) > 0 {
+			var warnings []string
+			for _, warning := range event.content.Warnings {
+				warnings = append(warnings, warning.Code+": "+warning.Message)
+			}
+			m.err = fmt.Errorf("saved with warnings; edited file retained at %s: %s", event.file, strings.Join(warnings, "; "))
+			return m, nil
+		}
+		_ = os.Remove(event.file)
+		page := m.page
+		return m, func() tea.Msg { return PageUpdatedMsg(page) }
+	case errMsg:
+		m.err = event
+		m.loading = false
+		return m, nil
+	}
 
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch keyMsg.String() {
@@ -632,18 +687,6 @@ func (m EditorModel) Update(msg tea.Msg) (EditorModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case editorFinishedMsg:
 		return m, m.handleEditorFinished(msg)
-
-	case errMsg:
-		m.err = msg
-		m.loading = false
-		return m, nil
-
-	case blocksMsg:
-		m.blocks = msg
-		m.blocksLoaded = true
-		m.loading = false
-		m.updateContent()
-		return m, nil
 
 	case relationTitlesMsg:
 		for id, title := range msg {

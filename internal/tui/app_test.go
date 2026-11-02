@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"noctl/internal/config"
+	"noctl/internal/notion"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -131,9 +132,7 @@ func TestEditorRendersBodyForBothBackgrounds(t *testing.T) {
 			"Title": &notionapi.TitleProperty{Title: []notionapi.RichText{{PlainText: "Page title"}}},
 		}}
 		m, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
-		m, _ = m.Update(blocksMsg{&notionapi.ParagraphBlock{
-			Paragraph: notionapi.Paragraph{RichText: []notionapi.RichText{{PlainText: "Body text"}}},
-		}})
+		m, _ = m.Update(markdownMsg{pageID: "page", content: &notion.PageMarkdown{Markdown: "Body text"}})
 		if !strings.Contains(ansi.Strip(m.View()), "Body text") {
 			t.Fatalf("body missing for dark=%v", dark)
 		}
