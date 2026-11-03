@@ -100,6 +100,9 @@ func (m SelectorModel) Update(msg tea.Msg) (SelectorModel, tea.Cmd) {
 
 		switch msg.String() {
 		case "esc":
+			if m.list.FilterState() != list.Unfiltered {
+				break
+			}
 			return m, func() tea.Msg { return CancelSelectorMsg{} }
 		case "space":
 			if m.isMulti {

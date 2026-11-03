@@ -47,14 +47,17 @@ func (c *Client) QueryDatabase(ctx context.Context, id string, cursor notionapi.
 		return nil, err
 	}
 
-	httpClient := &http.Client{Timeout: 30 * time.Second}
+	httpClient := c.httpClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 30 * time.Second}
+	}
 
 	// Helper to perform the actual query
-	doQuery := func(endpoint string, targetID string) (*notionapi.DatabaseQueryResponse, int, []byte, error) {
+	doQuery := func(endpoint string, targetID string) (*notionapi.DatabaseQueryResponse, int, error) {
 		url := fmt.Sprintf("https://api.notion.com/v1/%s/%s/query", endpoint, targetID)
 		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonBody))
 		if err != nil {
-			return nil, 0, nil, err
+			return nil, 0, err
 		}
 		req.Header.Set("Authorization", "Bearer "+c.token)
 		req.Header.Set("Notion-Version", "2026-03-11")
@@ -62,26 +65,29 @@ func (c *Client) QueryDatabase(ctx context.Context, id string, cursor notionapi.
 
 		resp, err := httpClient.Do(req)
 		if err != nil {
-			return nil, 0, nil, err
+			return nil, 0, err
 		}
 		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			b, _ := io.ReadAll(resp.Body)
-			return nil, resp.StatusCode, b, nil
+			return nil, resp.StatusCode, fmt.Errorf("querying %s %s failed with status %d: %s", endpoint, targetID, resp.StatusCode, string(b))
 		}
 
 		var res notionapi.DatabaseQueryResponse
 		if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-			return nil, resp.StatusCode, nil, err
+			return nil, resp.StatusCode, err
 		}
-		return &res, resp.StatusCode, nil, nil
+		return &res, resp.StatusCode, nil
 	}
 
 	// 1. Try querying as a data_source first
-	res, status, _, err := doQuery("data_sources", id)
-	if err == nil && status == http.StatusOK {
+	res, status, err := doQuery("data_sources", id)
+	if err == nil {
 		return res, nil
+	}
+	if status != http.StatusBadRequest && status != http.StatusNotFound {
+		return nil, err
 	}
 
 	// 2. If it failed with 400 or 404, it might be a database_id.
@@ -106,26 +112,25 @@ func (c *Client) QueryDatabase(ctx context.Context, id string, cursor notionapi.
 				ID string `json:"id"`
 			} `json:"data_sources"`
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&dbMetadata); err == nil && len(dbMetadata.DataSources) > 0 {
+		if err := json.NewDecoder(resp.Body).Decode(&dbMetadata); err != nil {
+			return nil, fmt.Errorf("decoding database %s metadata: %w", id, err)
+		}
+		if len(dbMetadata.DataSources) > 0 {
 			// Query the first data source for now.
 			// Ideally we should query all and combine if we want a complete view,
 			// but for single-source databases (the common case), the first one is enough.
 			dsID := dbMetadata.DataSources[0].ID
-			res, _, _, err := doQuery("data_sources", dsID)
+			res, _, err := doQuery("data_sources", dsID)
 			return res, err
 		}
+	} else if resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusNotFound {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("getting database %s failed with status %d: %s", id, resp.StatusCode, string(b))
 	}
 
 	// 3. Fallback to the old databases endpoint as a last resort
-	res, status, b, err := doQuery("databases", id)
-	if err != nil {
-		return nil, err
-	}
-	if status != http.StatusOK {
-		return nil, fmt.Errorf("querying database/data_source %s failed: %s", id, string(b))
-	}
-
-	return res, nil
+	res, _, err = doQuery("databases", id)
+	return res, err
 }
 
 // CreatePage creates a new page in the specified database (or data source).

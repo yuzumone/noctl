@@ -29,9 +29,15 @@ type RecordsModel struct {
 	err         error
 	width       int
 	height      int
+	requestID   uint64
 }
 
-type recordsMsg []notionapi.Page
+type recordsMsg struct {
+	dbID      string
+	requestID uint64
+	pages     []notionapi.Page
+	err       error
+}
 type SelectPageMsg struct {
 	Page *notionapi.Page
 }
@@ -82,15 +88,19 @@ func (m RecordsModel) Init() tea.Cmd {
 
 // SetDatabase sets the database for the records view and triggers fetching of all pages.
 func (m *RecordsModel) SetDatabase(id string, name string, cache []notionapi.Page) tea.Cmd {
+	m.requestID++
 	m.dbID = id
 	m.dbName = name
 	m.loading = true
 	m.allPages = nil
 	m.pages = nil
+	m.err = nil
+	m.filtering = false
+	m.filterInput.Blur()
 	m.filterInput.SetValue("")
 	m.table.SetRows([]table.Row{})
 
-	if len(cache) > 0 {
+	if cache != nil {
 		m.loading = false
 		m.allPages = cache
 		m.updateTable()
@@ -105,9 +115,9 @@ func (m *RecordsModel) SetDatabase(id string, name string, cache []notionapi.Pag
 func (m RecordsModel) fetchAllRecords() tea.Msg {
 	pages, err := m.client.QueryDatabaseAll(context.Background(), m.dbID)
 	if err != nil {
-		return errMsg(fmt.Errorf("failed to fetch records for %s: %w", m.dbName, err))
+		err = fmt.Errorf("failed to fetch records for %s: %w", m.dbName, err)
 	}
-	return recordsMsg(pages)
+	return recordsMsg{dbID: m.dbID, requestID: m.requestID, pages: pages, err: err}
 }
 
 func (m *RecordsModel) updateTable() {
@@ -222,6 +232,21 @@ func (m *RecordsModel) updateTable() {
 func (m RecordsModel) Update(msg tea.Msg) (RecordsModel, tea.Cmd) {
 	var cmd tea.Cmd
 
+	// Results belong to the request that started them, even while filtering.
+	if result, ok := msg.(recordsMsg); ok {
+		if result.dbID != m.dbID || result.requestID != m.requestID {
+			return m, nil
+		}
+		m.loading = false
+		m.err = result.err
+		if result.err == nil {
+			m.allPages = result.pages
+			m.updateTable()
+			m.table.SetCursor(0)
+		}
+		return m, nil
+	}
+
 	if m.filtering {
 		switch msg := msg.(type) {
 		case tea.KeyPressMsg:
@@ -295,15 +320,6 @@ func (m RecordsModel) Update(msg tea.Msg) (RecordsModel, tea.Cmd) {
 			m.updateTable()
 		}
 
-	case recordsMsg:
-		m.loading = false
-		m.allPages = msg
-		m.updateTable()
-		m.table.SetCursor(0)
-
-	case errMsg:
-		m.err = msg
-		m.loading = false
 	}
 
 	m.table, cmd = m.table.Update(msg)
