@@ -127,3 +127,28 @@ func TestRetryTransportRetriesWithRequestBody(t *testing.T) {
 		t.Fatalf("delays = %v, want [500ms]", delays)
 	}
 }
+
+func TestRetryTransportHonorsRetryAfter(t *testing.T) {
+	calls := 0
+	var delay time.Duration
+	transport := &retryTransport{
+		base: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			calls++
+			status := http.StatusOK
+			if calls == 1 {
+				status = http.StatusTooManyRequests
+			}
+			return &http.Response{StatusCode: status, Header: http.Header{"Retry-After": []string{"3"}}, Body: io.NopCloser(strings.NewReader("{}"))}, nil
+		}),
+		sleep: func(d time.Duration) { delay = d },
+	}
+	req, _ := http.NewRequest(http.MethodGet, "https://api.notion.com/v1/test", nil)
+	resp, err := transport.RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if calls != 2 || delay != 3*time.Second || resp.StatusCode != http.StatusOK {
+		t.Fatalf("calls=%d delay=%v status=%d", calls, delay, resp.StatusCode)
+	}
+}

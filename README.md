@@ -76,15 +76,15 @@ noctl export page <page-id> --output ./content/articles --force
 
 Export is CLI-only and uses the existing Notion token configuration. Share the
 page and any referenced pages with that integration. Only page IDs are accepted
-as arguments; database export is not yet implemented. The supported format is
+as arguments; use `noctl export database <database-id>` (or `export db`) to export all pages. Database export accepts the same flags, converts all pages before writing, and rejects duplicate slugs. Files are written individually; a write failure may leave earlier files exported. The supported format is
 `hugo`, which is also the default.
 
 Property names become YAML front matter keys without renaming or Hugo-specific
 mapping. A non-empty string property named `slug` is required, including for
 `--dryrun`. Slugs must be single filenames: path separators, control characters,
 `<>:"|?*`, surrounding whitespace, and trailing dots are rejected. The exporter
-never falls back to the title, renames old files, creates output directories, or
-deletes previous exports. Existing directories and symlinks cannot be overwritten.
+creates missing output directories, but never falls back to the title, renames old
+files, or deletes previous exports. Existing directories and symlinks cannot be overwritten.
 Completed output is published from a temporary file in the destination directory;
 failures before publication leave an existing output unchanged. Without `--force`,
 a file created concurrently is not overwritten. Redirecting stdout with a shell

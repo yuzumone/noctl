@@ -185,8 +185,16 @@ func TestWrite(t *testing.T) {
 	if string(b) != "safe" {
 		t.Fatal("changed symlink destination")
 	}
-	if _, err := Write(filepath.Join(dir, "missing"), doc, false); err == nil {
-		t.Fatal("created missing parent")
+	nested := filepath.Join(dir, "missing", "articles")
+	created, err := Write(nested, doc, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(created); err != nil || string(b) != "replacement" {
+		t.Fatalf("nested output: %q, %v", b, err)
+	}
+	if _, err := Write(filepath.Join(other, "articles"), doc, false); err == nil {
+		t.Fatal("accepted regular file as parent directory")
 	}
 }
 
@@ -243,6 +251,55 @@ func TestStyleBlocks(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Fatalf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestInlineCodeTags(t *testing.T) {
+	for _, tt := range []struct{ input, want string }{
+		{`<code>$HOME/.config/direnv/direnvrc</code>`, "`$HOME/.config/direnv/direnvrc`"},
+		{`あとは <code>use flake</code> です`, "あとは `use flake` です"},
+		{"<code>a`b</code>", "``a`b``"},
+		{"<code>`x`</code>", "`` `x` ``"},
+		{`<code>&lt;span&gt;&amp;</code>`, "`<span>&`"},
+		{`<code><span>literal</span></code>`, "`<span>literal</span>`"},
+		{`<code> x </code>`, "`  x  `"},
+	} {
+		t.Run(tt.input, func(t *testing.T) {
+			r, err := newResolver(context.Background(), testSource(""), "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := convertMarkdown(tt.input, r)
+			if err != nil || got != tt.want {
+				t.Fatalf("got %q, error %v; want %q", got, err, tt.want)
+			}
+		})
+	}
+}
+
+func TestImportedArticleLinks(t *testing.T) {
+	for _, tt := range []struct{ template, link, want string }{
+		{"/articles/{slug}/", "https://app.notion.com/articles/example/", "/articles/example/"},
+		{"/posts/{slug}/", "https://app.notion.com/articles/example/", "/posts/example/"},
+		{"", "https://app.notion.com/articles/example/", "https://app.notion.com/articles/example/"},
+		{"/articles/{title}/", "https://app.notion.com/articles/example/", "https://app.notion.com/articles/example/"},
+		{"/articles/{slug}/", "https://app.notion.com/articles/example/#block", "https://app.notion.com/articles/example/#block"},
+		{"/articles/{slug}/", "https://example.com/articles/example/", "https://example.com/articles/example/"},
+	} {
+		t.Run(tt.template+tt.link, func(t *testing.T) {
+			s := testSource("")
+			r, err := newResolver(context.Background(), s, tt.template)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, label := r.resolve(tt.link, "Article")
+			if got != tt.want || label != "Article" {
+				t.Fatalf("got %q %q", got, label)
+			}
+			if len(s.calls) != 0 {
+				t.Fatal("slug links must not call page API")
 			}
 		})
 	}

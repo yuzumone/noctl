@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/jomei/notionapi"
@@ -53,8 +54,20 @@ func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			return resp, nil
 		}
 
+		delay := retryDelay(resp.StatusCode, i)
+		if seconds, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && seconds >= 0 {
+			if wait := time.Duration(seconds) * time.Second; wait > delay {
+				delay = wait
+			}
+		} else if until, err := http.ParseTime(resp.Header.Get("Retry-After")); err == nil {
+			if wait := time.Until(until); wait > delay {
+				delay = wait
+			}
+		}
 		closeResponseBody(resp)
-		t.wait(retryDelay(resp.StatusCode, i))
+		if err := t.wait(req.Context(), delay); err != nil {
+			return nil, err
+		}
 	}
 
 	return resp, err
@@ -83,12 +96,22 @@ func retryDelay(status int, attempt int) time.Duration {
 	return time.Duration(attempt+1) * 500 * time.Millisecond
 }
 
-func (t *retryTransport) wait(delay time.Duration) {
+func (t *retryTransport) wait(ctx context.Context, delay time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if t.sleep != nil {
 		t.sleep(delay)
-		return
+		return ctx.Err()
 	}
-	time.Sleep(delay)
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (c *Client) doNotionJSON(ctx context.Context, method string, path string, requestBody interface{}, responseBody interface{}, operation string) error {

@@ -16,6 +16,7 @@ import (
 func (c *Client) QueryDatabaseAll(ctx context.Context, dbID string) ([]notionapi.Page, error) {
 	var pages []notionapi.Page
 	var cursor notionapi.Cursor
+	seen := map[notionapi.Cursor]bool{}
 
 	for {
 		res, err := c.QueryDatabase(ctx, dbID, cursor)
@@ -26,6 +27,10 @@ func (c *Client) QueryDatabaseAll(ctx context.Context, dbID string) ([]notionapi
 		if !res.HasMore {
 			break
 		}
+		if res.NextCursor == "" || seen[res.NextCursor] {
+			return nil, fmt.Errorf("incomplete database pagination")
+		}
+		seen[res.NextCursor] = true
 		cursor = res.NextCursor
 	}
 

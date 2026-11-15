@@ -302,7 +302,14 @@ func (p *tagParser) parse(end string) (string, error) {
 		}
 		self := typ == xhtml.SelfClosingTagToken || name == "br"
 		child := ""
-		if !self && name == "mention" {
+		if !self && name == "code" {
+			closing := strings.Index(p.source[p.position:], "</code>")
+			if closing < 0 {
+				return "", fmt.Errorf("unclosed Notion tag <code>")
+			}
+			child = html.UnescapeString(p.restore(p.source[p.position : p.position+closing]))
+			p.position += closing + len("</code>")
+		} else if !self && name == "mention" {
 			closing := strings.Index(p.source[p.position:], "</mention>")
 			if closing < 0 {
 				return "", fmt.Errorf("unclosed Notion tag <mention>")
@@ -339,6 +346,23 @@ func markdownLink(label, target string) string {
 
 func (p *tagParser) convert(name string, a map[string]string, child string) (string, error) {
 	switch name {
+	case "code":
+		longest, run := 0, 0
+		for _, r := range child {
+			if r == '`' {
+				run++
+				if run > longest {
+					longest = run
+				}
+			} else {
+				run = 0
+			}
+		}
+		fence := strings.Repeat("`", longest+1)
+		if strings.HasPrefix(child, "`") || strings.HasSuffix(child, "`") || (strings.HasPrefix(child, " ") && strings.HasSuffix(child, " ") && strings.TrimSpace(child) != "") {
+			child = " " + child + " "
+		}
+		return fence + child + fence, nil
 	case "b":
 		return "**" + child + "**", nil
 	case "i":

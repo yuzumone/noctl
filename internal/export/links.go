@@ -59,15 +59,24 @@ func (r *resolver) resolve(link, label string) (string, string) {
 		return link, label
 	}
 	match := uuid.FindStringSubmatch(strings.TrimRight(u.Path, "/"))
-	if len(match) == 0 {
-		r.warn(link, "cannot identify page ID")
-		return link, label
-	}
-	id := normalizeID(match[1])
-	item, ok := r.cache[id]
-	if !ok {
-		item.properties, item.title, item.err = r.source.ExportPageReference(r.ctx, id)
-		r.cache[id] = item
+	var item cachedProperties
+	// Some imported links retain a site path under Notion's app host.
+	// These carry a slug rather than an API page ID.
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if u.Host == "app.notion.com" && len(parts) == 2 && parts[0] == "articles" && validSlug(parts[1]) {
+		item.properties = map[string]any{"slug": parts[1]}
+	} else {
+		if len(match) == 0 {
+			r.warn(link, "cannot identify page ID")
+			return link, label
+		}
+		id := normalizeID(match[1])
+		var ok bool
+		item, ok = r.cache[id]
+		if !ok {
+			item.properties, item.title, item.err = r.source.ExportPageReference(r.ctx, id)
+			r.cache[id] = item
+		}
 	}
 	if item.err != nil {
 		r.warn(link, "cannot retrieve referenced page: "+item.err.Error())
