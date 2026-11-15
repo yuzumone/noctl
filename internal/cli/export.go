@@ -27,14 +27,16 @@ func NewExportCmd() *cobra.Command {
 				return err
 			}
 			if cfg.NotionToken == "" {
-				return fmt.Errorf("Notion token is required; set NOCTL_NOTION_TOKEN or notion_token in your config")
+				return fmt.Errorf("notion token is required; set NOCTL_NOTION_TOKEN or notion_token in your config")
 			}
 			doc, err := pageexport.Page(cmd.Context(), notion.NewClient(cfg.NotionToken), args[0], linkTemplate)
 			if err != nil {
 				return err
 			}
 			for _, warning := range doc.Warnings {
-				fmt.Fprintln(cmd.ErrOrStderr(), "Warning:", warning)
+				if _, err := fmt.Fprintln(cmd.ErrOrStderr(), "Warning:", warning); err != nil {
+					return err
+				}
 			}
 			if dryrun {
 				_, err = cmd.OutOrStdout().Write(doc.Markdown)
@@ -44,8 +46,8 @@ func NewExportCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.ErrOrStderr(), "Exported", path)
-			return nil
+			_, err = fmt.Fprintln(cmd.ErrOrStderr(), "Exported", path)
+			return err
 		},
 	}
 	pageCmd.Flags().StringVar(&format, "format", "hugo", "Output format (hugo)")

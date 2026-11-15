@@ -112,7 +112,7 @@ func lexicalCodeSpans(source string) []codeSpan {
 // Arbitrary fence lengths and multiline code spans are preserved when restored.
 func protectCode(source string) (string, func(string) string, error) {
 	if strings.ContainsRune(source, 0) {
-		return "", nil, fmt.Errorf("Markdown contains NUL")
+		return "", nil, fmt.Errorf("markdown contains NUL")
 	}
 	data := []byte(source)
 	tree := goldmark.DefaultParser().Parse(text.NewReader(data))
