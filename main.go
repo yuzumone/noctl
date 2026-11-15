@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"noctl/internal/cli"
 	"noctl/internal/config"
 	"noctl/internal/tui"
 	"noctl/internal/version"
@@ -43,6 +44,7 @@ var versionCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(calendarCmd)
+	rootCmd.AddCommand(cli.NewExportCmd())
 	rootCmd.AddCommand(versionCmd)
 }
 

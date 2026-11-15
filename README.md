@@ -53,8 +53,88 @@ theme:
 |---|---|
 | `noctl` | Launch the main TUI (starts with database list). |
 | `noctl calendar` | Launch the integrated multi-database calendar view. |
+| `noctl export page <page-id>` | Export a page as Hugo Markdown. |
 | `noctl version` | Print the current version. |
 | `noctl --help` | Show usage information. |
+
+### Export a page for Hugo
+
+```sh
+# Write ./<slug>.md (the default output directory is ./).
+noctl export page <page-id> --format hugo
+
+# Write into an existing content directory and resolve page references.
+noctl export page <page-id> --output ./content/articles \
+  --link-template '/articles/{slug}/'
+
+# Read and convert the page without writing any files.
+noctl export page <page-id> --link-template '/articles/{slug}/' --dryrun
+
+# Explicitly allow replacing an existing regular file.
+noctl export page <page-id> --output ./content/articles --force
+```
+
+Export is CLI-only and uses the existing Notion token configuration. Share the
+page and any referenced pages with that integration. Only page IDs are accepted
+as arguments; database export is not yet implemented. The supported format is
+`hugo`, which is also the default.
+
+Property names become YAML front matter keys without renaming or Hugo-specific
+mapping. A non-empty string property named `slug` is required, including for
+`--dryrun`. Slugs must be single filenames: path separators, control characters,
+`<>:"|?*`, surrounding whitespace, and trailing dots are rejected. The exporter
+never falls back to the title, renames old files, creates output directories, or
+deletes previous exports. Existing directories and symlinks cannot be overwritten.
+Completed output is published from a temporary file in the destination directory;
+failures before publication leave an existing output unchanged. Without `--force`,
+a file created concurrently is not overwritten. Redirecting stdout with a shell
+bypasses these protections; use `--output` for file output.
+
+Property conversion:
+
+| Notion type | YAML value |
+|---|---|
+| title, rich_text | Concatenated plain text, without styling |
+| number, checkbox | Number or boolean (including `0` and `false`) |
+| select, status | Option name |
+| multi_select | Array of option names |
+| url, email, phone_number | String |
+| date | Start string; `{start, end, time_zone}` with only present fields when extra information exists |
+| people, relation | Array of user or page IDs |
+| created_by, last_edited_by | User ID |
+| created_time, last_edited_time | Timestamp string |
+| files | Array of `{name, url}` objects; files are not downloaded |
+| unique_id | `{prefix, number}` |
+| formula, rollup | Converted calculation result, recursively for arrays |
+
+Empty strings, empty arrays, null values, false, and zero are retained. Unknown
+property types and incomplete calculations fail the export. Paginated properties
+are retrieved completely before conversion. The Notion schema must use names and
+value types suitable for Hugo (for example, a single date for Hugo's `date`).
+
+Common Notion tags are converted to Markdown: callouts/quotes to blockquotes,
+toggles to HTML details, and embeds/bookmarks to ordinary links. Ordinary
+Markdown and code are preserved; literal Hugo shortcode syntax is escaped so
+Hugo does not execute it. Unknown or unsupported Notion tags fail rather than
+silently losing content. Image URLs are preserved without downloading or
+rewriting; Notion-hosted expiring URLs will still expire.
+Raw `<style>` blocks are preserved, and Markdown punctuation escapes added by
+Notion within escaped style blocks are removed. Style examples in code stay literal.
+
+With `--link-template`, page mentions and ordinary Notion Markdown links use the
+referenced page's properties to expand placeholders such as `{slug}`. Values
+must be non-empty strings or numbers and are URL-escaped as individual path
+segments. The template must be a site-relative path, for example
+`/articles/{slug}/`. Referenced properties are cached for one execution; referenced
+bodies are not retrieved. Missing properties, inaccessible pages, and block
+anchors keep their Notion URLs and produce warnings. The exporter does not
+verify that the resulting public URLs exist or that linked pages are published.
+Without this option, references retain Notion URLs without extra API requests.
+
+Truncated Markdown, unknown blocks, and failed property retrieval prevent output.
+No concurrent-edit detection is performed. Warnings and saved paths go to stderr;
+`--dryrun` writes only the completed document to stdout. Warnings allow a successful
+exit; retrieval, conversion, validation, and write failures return a nonzero exit.
 
 ### Key Bindings
 
