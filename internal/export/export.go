@@ -112,6 +112,9 @@ func Write(dir string, doc *Document, force bool) (string, error) {
 	if err := check(); err != nil {
 		return "", err
 	}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", fmt.Errorf("create output directory: %w", err)
+	}
 	f, err := os.CreateTemp(dir, ".noctl-export-*")
 	if err != nil {
 		return "", err
