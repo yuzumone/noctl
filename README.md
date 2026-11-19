@@ -16,7 +16,7 @@
 
 ### From Source
 
-Ensure you have Go 1.27.3 or later installed.
+Ensure you have Go 1.27.4 or later installed.
 
 ```bash
 git clone https://github.com/yourusername/noctl.git
